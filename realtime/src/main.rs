@@ -28,6 +28,10 @@ async fn health() -> HttpResponse {
 // ---------------------------------------------------------------------------
 
 #[get("/ws/dialer/")]
+#[get("/dialer/")]
+#[get("/ws/")]
+#[get("/ws")]
+#[get("/")]
 async fn dialer_ws(
     req: HttpRequest,
     body: web::Payload,
@@ -61,6 +65,7 @@ async fn dialer_ws(
 // ---------------------------------------------------------------------------
 
 #[get("/api/queue/")]
+#[get("/queue/")]
 async fn get_queue(queue: web::Data<Arc<DialerQueue>>) -> HttpResponse {
     let (count, next, paused, active_call) = queue.get_state().await;
     HttpResponse::Ok().json(QueueStatusResponse {
@@ -76,6 +81,7 @@ async fn get_queue(queue: web::Data<Arc<DialerQueue>>) -> HttpResponse {
 // ---------------------------------------------------------------------------
 
 #[post("/api/queue/add")]
+#[post("/queue/add")]
 async fn add_to_queue(
     queue: web::Data<Arc<DialerQueue>>,
     registry: web::Data<SessionRegistry>,
@@ -106,6 +112,7 @@ async fn add_to_queue(
 // ---------------------------------------------------------------------------
 
 #[delete("/api/queue/clear")]
+#[delete("/queue/clear")]
 async fn clear_queue(
     queue: web::Data<Arc<DialerQueue>>,
     registry: web::Data<SessionRegistry>,
