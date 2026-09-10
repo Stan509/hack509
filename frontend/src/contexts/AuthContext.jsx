@@ -75,45 +75,54 @@ export function AuthProvider({ children }) {
 
   // Initialize user from stored token
   useEffect(() => {
-    const storedToken = localStorage.getItem('h509_token')
-    if (storedToken && !isTokenExpired(storedToken)) {
-      const decoded = decodeToken(storedToken)
-      if (decoded) {
-        setUser({
-          username: decoded.username || decoded.user_id || 'operator',
-          role: decoded.role || decoded.is_staff ? 'admin' : 'operator',
-          id: decoded.user_id,
-        })
-        api.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`
-      }
-    } else if (storedToken) {
-      // Token expired, try refresh
-      const refreshToken = localStorage.getItem('h509_refresh')
-      if (refreshToken) {
-        axios.post(`${API_BASE}/api/auth/refresh/`, { refresh: refreshToken })
-          .then((res) => {
-            const newToken = res.data.access
-            localStorage.setItem('h509_token', newToken)
-            const decoded = decodeToken(newToken)
-            if (decoded) {
-              setUser({
-                username: decoded.username || 'operator',
-                role: decoded.role || (decoded.is_staff ? 'admin' : 'operator'),
-                id: decoded.user_id,
-              })
-            }
+    try {
+      const storedToken = localStorage.getItem('h509_token')
+      if (storedToken && !isTokenExpired(storedToken)) {
+        const decoded = decodeToken(storedToken)
+        if (decoded) {
+          setUser({
+            username: decoded.username || decoded.user_id || 'operator',
+            role: decoded.role || (decoded.is_staff ? 'admin' : 'operator'),
+            id: decoded.user_id,
           })
-          .catch(() => {
-            localStorage.removeItem('h509_token')
-            localStorage.removeItem('h509_refresh')
-          })
-          .finally(() => setLoading(false))
-        return
-      } else {
-        localStorage.removeItem('h509_token')
+          api.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`
+        } else {
+          localStorage.removeItem('h509_token')
+        }
+      } else if (storedToken) {
+        // Token expired, try refresh
+        const refreshToken = localStorage.getItem('h509_refresh')
+        if (refreshToken) {
+          axios.post(`${API_BASE}/api/auth/refresh/`, { refresh: refreshToken })
+            .then((res) => {
+              const newToken = res.data.access
+              localStorage.setItem('h509_token', newToken)
+              const decoded = decodeToken(newToken)
+              if (decoded) {
+                setUser({
+                  username: decoded.username || 'operator',
+                  role: decoded.role || (decoded.is_staff ? 'admin' : 'operator'),
+                  id: decoded.user_id,
+                })
+              }
+            })
+            .catch(() => {
+              localStorage.removeItem('h509_token')
+              localStorage.removeItem('h509_refresh')
+            })
+            .finally(() => setLoading(false))
+          return
+        } else {
+          localStorage.removeItem('h509_token')
+        }
       }
+    } catch (err) {
+      console.error('[Auth] Init error:', err)
+      localStorage.removeItem('h509_token')
+      localStorage.removeItem('h509_refresh')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }, [])
 
   const login = useCallback(async (username, password) => {
