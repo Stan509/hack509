@@ -1,0 +1,34 @@
+# Environment & Secrets
+.env
+*.env
+backend/.env
+
+# Databases & SQLite
+*.sqlite3
+backend/db.sqlite3
+
+# Python & Django
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+*.log
+
+# Frontend & Node
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+.output/
+
+# Rust
+target/
+realtime/target/
+
+# IDE / System
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.continue/

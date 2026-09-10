@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=False
+      - ALLOWED_HOSTS=*
+      - SECRET_KEY=production-cyberpunk-secret-key-hacker509-change-me
+    volumes:
+      - backend_data:/app
+
+  realtime:
+    build: ./realtime
+    restart: always
+    ports:
+      - "8001:8001"
+
+  frontend:
+    build: ./frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+      - realtime
+
+volumes:
+  backend_data:
