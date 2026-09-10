@@ -97,8 +97,8 @@ export default function Dashboard() {
     const load = async () => {
       try {
         const [statsRes, callsRes] = await Promise.allSettled([
-          api.get('/api/dashboard/stats/'),
-          api.get('/api/calls/recent/?limit=10'),
+          api.get('/api/calls/stats/'),
+          api.get('/api/calls/?page_size=10'),
         ])
         if (statsRes.status === 'fulfilled') setStats(statsRes.value.data)
         if (callsRes.status === 'fulfilled') setRecentCalls(callsRes.value.data?.results || callsRes.value.data || [])
@@ -124,8 +124,8 @@ export default function Dashboard() {
 
   // Check Twilio
   useEffect(() => {
-    api.get('/api/twilio/status/').then(() => {
-      setSysStatus((prev) => ({ ...prev, twilio: 'online' }))
+    api.get('/api/twilio/config/').then((res) => {
+      setSysStatus((prev) => ({ ...prev, twilio: res.data?.is_configured ? 'online' : 'warning' }))
     }).catch(() => {
       setSysStatus((prev) => ({ ...prev, twilio: 'warning' }))
     })
