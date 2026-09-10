@@ -10,11 +10,19 @@ from .models import CustomUser
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     """
-    Extended JWT serializer that includes user info in the response.
+    Extended JWT serializer that includes user info in the response and JWT claims.
     """
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        token['username'] = user.username
+        token['email'] = user.email
+        token['role'] = user.role
+        token['is_staff'] = user.is_staff
+        return token
+
     def validate(self, attrs):
         data = super().validate(attrs)
-        # Add extra user info to response
         data['user'] = {
             'id': self.user.id,
             'username': self.user.username,
