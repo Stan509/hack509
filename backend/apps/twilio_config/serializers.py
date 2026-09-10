@@ -10,23 +10,29 @@ class TwilioConfigSerializer(serializers.ModelSerializer):
     Serializer for reading TwilioConfig - masks the auth token.
     """
     auth_token_masked = serializers.SerializerMethodField()
+    is_configured = serializers.SerializerMethodField()
 
     class Meta:
         model = TwilioConfig
         fields = [
             'id', 'account_sid', 'auth_token_masked', 'phone_number',
-            'cnam_name', 'twiml_app_sid', 'updated_at', 'updated_by',
+            'cnam_name', 'twiml_app_sid', 'is_configured', 'updated_at', 'updated_by',
         ]
         read_only_fields = ['id', 'updated_at', 'updated_by']
 
     def get_auth_token_masked(self, obj):
         return obj.masked_auth_token()
 
+    def get_is_configured(self, obj):
+        return bool(obj and obj.account_sid and obj.auth_token)
+
 
 class TwilioConfigWriteSerializer(serializers.ModelSerializer):
     """
     Serializer for creating/updating TwilioConfig - accepts real auth token.
     """
+    phone_number = serializers.CharField(required=False, allow_blank=True, default='')
+
     class Meta:
         model = TwilioConfig
         fields = [
@@ -35,18 +41,18 @@ class TwilioConfigWriteSerializer(serializers.ModelSerializer):
         ]
 
     def validate_phone_number(self, value):
-        """Ensure phone number is in E.164 format."""
+        """Ensure phone number is formatted if provided."""
+        if not value:
+            return ''
         value = value.strip()
-        if not value.startswith('+'):
-            raise serializers.ValidationError(
-                'Phone number must be in E.164 format (e.g. +15551234567).'
-            )
+        if value and not value.startswith('+'):
+            return '+' + value
         return value
 
     def validate_account_sid(self, value):
         value = value.strip()
-        if not value.startswith('AC'):
+        if len(value) < 6:
             raise serializers.ValidationError(
-                'Account SID must start with "AC".'
+                'Account SID or Client ID must be a valid Twilio ID.'
             )
         return value
