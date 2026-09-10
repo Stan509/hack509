@@ -1,6 +1,10 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 
-const WS_URL = 'ws://localhost:8001/ws/dialer/'
+const getWsUrl = () => {
+  if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${window.location.host}/ws/dialer/`
+}
 
 const useDialerWS = () => {
   const [wsStatus, setWsStatus] = useState('disconnected')
@@ -71,8 +75,8 @@ const useDialerWS = () => {
     clearTimeout(reconnectTimeoutRef.current)
     setWsStatus('connecting')
 
-    const token = localStorage.getItem('h509_token')
-    const url = token ? `${WS_URL}?token=${encodeURIComponent(token)}` : WS_URL
+    const baseUrl = getWsUrl()
+    const url = token ? `${baseUrl}?token=${encodeURIComponent(token)}` : baseUrl
 
     try {
       const ws = new WebSocket(url)

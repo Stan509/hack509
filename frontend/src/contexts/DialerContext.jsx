@@ -3,7 +3,11 @@ import { useAuth } from './AuthContext.jsx'
 
 const DialerContext = createContext(null)
 
-const WS_URL = 'ws://localhost:8001/ws/dialer/'
+const getWsUrl = () => {
+  if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${window.location.host}/ws/dialer/`
+}
 
 export function DialerProvider({ children }) {
   const { api, isAuthenticated } = useAuth()
@@ -45,8 +49,8 @@ export function DialerProvider({ children }) {
     if (wsRef.current?.readyState === WebSocket.OPEN) return
 
     setWsStatus('connecting')
-    const token = localStorage.getItem('h509_token')
-    const url = token ? `${WS_URL}?token=${token}` : WS_URL
+    const baseUrl = getWsUrl()
+    const url = token ? `${baseUrl}?token=${token}` : baseUrl
 
     try {
       const ws = new WebSocket(url)

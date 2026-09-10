@@ -153,3 +153,35 @@ class CallStatsView(APIView):
             'total_calls': total_calls,
             'status_breakdown_today': status_breakdown,
         })
+
+
+from django.http import HttpResponse
+from apps.twilio_config.models import TwilioConfig
+
+class TwimlVoiceView(APIView):
+    """
+    POST /api/calls/twiml/
+    TwiML Webhook endpoint for Twilio Voice SDK outbound calls.
+    Returns TwiML XML instructing Twilio to dial the destination phone number.
+    """
+    permission_classes = []
+
+    def post(self, request):
+        to_number = request.POST.get('To') or request.POST.get('number') or request.query_params.get('To') or ''
+        config = TwilioConfig.objects.order_by('-updated_at').first()
+        caller_id = config.phone_number if config else ''
+
+        if to_number:
+            twiml = f'''<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Dial callerId="{caller_id}">
+        <Number>{to_number}</Number>
+    </Dial>
+</Response>'''
+        else:
+            twiml = '''<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say>No target number specified.</Say>
+</Response>'''
+
+        return HttpResponse(twiml, content_type='text/xml')

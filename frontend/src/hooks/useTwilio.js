@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import axios from 'axios'
 import { callAudio } from '../utils/callAudio.js'
 
-const API_BASE = 'http://localhost:8000'
+const API_BASE = import.meta.env.VITE_API_BASE || ''
 
 const useTwilio = () => {
   const [isReady, setIsReady] = useState(false)
