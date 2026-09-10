@@ -9,9 +9,7 @@ COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt gunicorn
 
 COPY . /app/
-RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 8000
 
-ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "hack509.wsgi:application"]
+CMD ["sh", "-c", "python init_db.py && gunicorn --bind 0.0.0.0:8000 hack509.wsgi:application"]
