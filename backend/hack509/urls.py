@@ -11,6 +11,8 @@ from apps.accounts.views import LoginView, RefreshTokenView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+
+    # Standard routes (with /api/ prefix)
     path('api/auth/', include('apps.accounts.urls')),
     path('api/token/', LoginView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', RefreshTokenView.as_view(), name='token_refresh'),
@@ -18,5 +20,14 @@ urlpatterns = [
     path('api/contacts/', include('apps.contacts.urls')),
     path('api/calls/', include('apps.calls.urls')),
     path('api/twilio/', include('apps.twilio_config.urls')),
+
+    # Stripped route fallbacks (for App Platform ingress /api prefix stripping)
+    path('auth/', include('apps.accounts.urls')),
+    path('token/', LoginView.as_view()),
+    path('token/refresh/', RefreshTokenView.as_view()),
+    path('users/', include('apps.accounts.urls_users')),
+    path('contacts/', include('apps.contacts.urls')),
+    path('calls/', include('apps.calls.urls')),
+    path('twilio/', include('apps.twilio_config.urls')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
