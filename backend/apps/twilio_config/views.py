@@ -46,6 +46,8 @@ class TwilioConfigView(APIView):
         config = TwilioConfig.objects.order_by('-updated_at').first()
         if config:
             for attr, value in serializer.validated_data.items():
+                if attr == 'auth_token' and not value:
+                    continue  # Keep existing auth token if left blank
                 setattr(config, attr, value)
             config.updated_by = request.user
             config.save()

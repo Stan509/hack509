@@ -31,6 +31,7 @@ class TwilioConfigWriteSerializer(serializers.ModelSerializer):
     """
     Serializer for creating/updating TwilioConfig - accepts real auth token.
     """
+    auth_token = serializers.CharField(required=False, allow_blank=True, default='')
     phone_number = serializers.CharField(required=False, allow_blank=True, default='')
 
     class Meta:
