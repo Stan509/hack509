@@ -42,7 +42,7 @@ const STATUS_DISPLAY = {
 
 export default function CallControls() {
   const { currentContact, callStatus, callTimer, formatTimer, dialNext, hangUp, queue, autoDial, setAutoDial, toggleFavoriteContact, ringTimeout, setRingTimeout, ringTimer, ringTimeoutActive } = useDialer()
-  const { makeCall, hangup, hold, mute, isMuted, isOnHold, isReady, simulationMode } = useTwilio()
+  const { makeCall, hangup, hold, mute, isMuted, isOnHold, isReady, simulationMode, error } = useTwilio()
 
   const statusCfg = STATUS_DISPLAY[callStatus] || STATUS_DISPLAY.idle
   const isCallActive = callStatus === 'active' || callStatus === 'holding'
@@ -120,6 +120,18 @@ export default function CallControls() {
             )}
           </div>
         </div>
+
+        {/* Error notification banner */}
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: -5 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="w-full text-center p-2 mb-3 rounded text-xs font-mono text-neon-danger border border-neon-danger"
+            style={{ background: 'rgba(255,34,68,0.15)', boxShadow: '0 0 12px rgba(255,34,68,0.3)' }}
+          >
+            ⚠️ TWILIO: {error}
+          </motion.div>
+        )}
 
         {/* Status indicator */}
         <div className="flex items-center justify-center gap-3 mb-6">
