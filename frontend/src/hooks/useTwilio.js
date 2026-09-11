@@ -40,10 +40,15 @@ const useTwilio = () => {
       const twilioToken = await fetchToken()
 
       if (!twilioToken) {
-        console.warn('[Twilio] No token — entering simulation mode')
+        console.warn('[Twilio] No valid token available — entering simulation mode')
         setSimulationMode(true)
         setIsReady(true)
-        return
+        return null
+      }
+
+      // Destroy old device instance if existing
+      if (deviceRef.current) {
+        try { deviceRef.current.destroy() } catch {}
       }
 
       const dev = new Device(twilioToken, {
@@ -53,8 +58,10 @@ const useTwilio = () => {
       })
 
       dev.on('ready', () => {
+        console.log('[Twilio] Device READY for live calls')
         setIsReady(true)
         setError(null)
+        setSimulationMode(false)
         deviceRef.current = dev
         setDevice(dev)
       })
@@ -63,7 +70,7 @@ const useTwilio = () => {
         const errMsg = err.message || 'Twilio device error'
         console.error('[Twilio] Error:', err)
         if (err.code === 20101 || errMsg.includes('20101') || errMsg.includes('AccessTokenInvalid')) {
-          setError('AccessTokenInvalid (20101): Créez une Clé API (SK...) dans Twilio Console (Account > API Keys) ou passez en mode Simulation.')
+          setError('AccessTokenInvalid (20101): Token invalide ou expiré. Entrez vos identifiants sur /settings.')
           setSimulationMode(true)
         } else {
           setError(errMsg)
@@ -102,12 +109,17 @@ const useTwilio = () => {
       })
 
       await dev.register()
+      setSimulationMode(false)
+      setIsReady(true)
+      setError(null)
       deviceRef.current = dev
       setDevice(dev)
+      return dev
     } catch (err) {
       console.warn('[Twilio] Init failed:', err)
       setSimulationMode(true)
       setIsReady(true)
+      return null
     }
   }, [fetchToken])
 
@@ -116,13 +128,18 @@ const useTwilio = () => {
     setIsMuted(false)
     setIsOnHold(false)
 
-    if (simulationMode) {
-      // Simulation mode: fake call lifecycle with realistic ringback sound
-      setCallStatus('ringing')
-      simTimerRef.current = setTimeout(() => {
-        setCallStatus('active')
-      }, 4500)
-      return { simulated: true }
+    // If currently in simulation mode or device not ready, try re-checking for real token first!
+    if (simulationMode || !deviceRef.current) {
+      console.log('[Twilio] Checking if real Twilio device can be initialized...')
+      const liveDevice = await initDevice()
+      if (!liveDevice) {
+        console.warn('[Twilio] Live device unavailable — falling back to simulation mode')
+        setCallStatus('ringing')
+        simTimerRef.current = setTimeout(() => {
+          setCallStatus('active')
+        }, 4500)
+        return { simulated: true }
+      }
     }
 
     if (!deviceRef.current) {
@@ -158,7 +175,7 @@ const useTwilio = () => {
       setCallStatus('idle')
       return null
     }
-  }, [simulationMode])
+  }, [simulationMode, initDevice])
 
   const hangup = useCallback(() => {
     clearTimeout(simTimerRef.current)
@@ -181,7 +198,6 @@ const useTwilio = () => {
     }
     if (callRef.current) {
       const newHold = !isOnHold
-      // Twilio doesn't have built-in hold — use mute + backend API
       callRef.current.mute(newHold)
       setIsOnHold(newHold)
       setCallStatus(newHold ? 'holding' : 'active')
@@ -254,6 +270,7 @@ const useTwilio = () => {
     device,
     simulationMode,
     error,
+    initDevice,
     makeCall,
     hangup,
     hold,
