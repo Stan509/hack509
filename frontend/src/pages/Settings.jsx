@@ -2,11 +2,14 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext.jsx'
 
-function ConfigField({ label, value, onChange, type = 'text', placeholder = '', masked = false, hint = '' }) {
+function ConfigField({ label, value, onChange, type = 'text', placeholder = '', masked = false, hint = '', required = false }) {
   const [show, setShow] = useState(false)
   return (
     <div>
-      <label className="block terminal-header mb-1">{label}</label>
+      <label className="block terminal-header mb-1 flex items-center justify-between">
+        <span>{label}</span>
+        {required && <span className="text-neon-green text-[0.65rem] font-mono">[REQUIS]</span>}
+      </label>
       <div className="relative">
         <input
           type={masked && !show ? 'password' : type}
@@ -21,11 +24,11 @@ function ConfigField({ label, value, onChange, type = 'text', placeholder = '', 
             onClick={() => setShow(!show)}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted text-xs font-mono hover:text-neon-green transition-colors"
           >
-            {show ? 'HIDE' : 'SHOW'}
+            {show ? 'MASQUER' : 'AFFICHER'}
           </button>
         )}
       </div>
-      {hint && <div className="text-text-muted text-xs font-mono mt-1" style={{ fontSize: '0.6rem' }}>{hint}</div>}
+      {hint && <div className="text-text-muted text-xs font-mono mt-1" style={{ fontSize: '0.65rem' }}>{hint}</div>}
     </div>
   )
 }
@@ -50,6 +53,7 @@ export default function Settings() {
   const [configStatus, setConfigStatus] = useState(null)
   const [hasAuthToken, setHasAuthToken] = useState(false)
   const [loadError, setLoadError] = useState('')
+  const [showAdvanced, setShowAdvanced] = useState(false)
   const [showDanger, setShowDanger] = useState(false)
   const [resetting, setResetting] = useState(false)
 
@@ -59,7 +63,7 @@ export default function Settings() {
         const d = res.data
         setConfig({
           account_sid: d.account_sid || '',
-          auth_token: '',  // Never pre-fill token in plain text for security
+          auth_token: '',
           phone_number: d.phone_number || '',
           caller_id_name: d.caller_id_name || '',
           twiml_app_sid: d.twiml_app_sid || '',
@@ -71,7 +75,7 @@ export default function Settings() {
       })
       .catch(() => {
         setConfigStatus('not_configured')
-        setLoadError('Could not load existing config from server.')
+        setLoadError('Impossible de charger la configuration actuelle.')
       })
   }, [])
 
@@ -81,17 +85,27 @@ export default function Settings() {
     setSaveMsg('')
     setSaveError('')
     try {
-      // Only send masked/secret fields if filled in
       const payload = { ...config }
       if (!payload.auth_token) delete payload.auth_token
       if (!payload.api_key_secret) delete payload.api_key_secret
 
-      await api.post('/api/twilio/config/', payload)
-      setSaveMsg('CONFIGURATION SAVED SUCCESSFULLY')
+      const res = await api.post('/api/twilio/config/', payload)
+      const d = res.data
+      setConfig({
+        account_sid: d.account_sid || '',
+        auth_token: '',
+        phone_number: d.phone_number || '',
+        caller_id_name: d.caller_id_name || '',
+        twiml_app_sid: d.twiml_app_sid || '',
+        api_key_sid: d.api_key_sid || '',
+        api_key_secret: '',
+      })
+      setHasAuthToken(Boolean(d.has_auth_token))
+      setSaveMsg('CONFIGURATION ET CLÉS TWILIO SAUVEGARDÉES ET GÉNÉRÉES AUTOMATIQUEMENT !')
       setConfigStatus('configured')
-      setTimeout(() => setSaveMsg(''), 4000)
+      setTimeout(() => setSaveMsg(''), 5000)
     } catch (err) {
-      setSaveError(err.response?.data?.detail || err.response?.data?.error || 'Failed to save configuration')
+      setSaveError(err.response?.data?.detail || err.response?.data?.message || 'Erreur lors de la sauvegarde de la configuration')
     } finally {
       setSaving(false)
     }
@@ -102,24 +116,25 @@ export default function Settings() {
     setTestResult(null)
     try {
       const res = await api.get('/api/twilio/test/')
-      setTestResult({ success: true, message: res.data?.message || 'Connection successful' })
+      setTestResult({ success: true, message: res.data?.message || 'Connexion à Twilio réussie !' })
     } catch (err) {
-      setTestResult({ success: false, message: err.response?.data?.detail || 'Connection failed' })
+      setTestResult({ success: false, message: err.response?.data?.message || err.response?.data?.detail || 'Échec de connexion à Twilio' })
     } finally {
       setTesting(false)
     }
   }
 
   const handleReset = async () => {
-    if (!window.confirm('CONFIRM: Delete all Twilio configuration? This cannot be undone.')) return
+    if (!window.confirm('CONFIRMER : Supprimer toute la configuration Twilio ?')) return
     setResetting(true)
     try {
       await api.delete('/api/twilio/config/')
-      setConfig({ account_sid: '', auth_token: '', phone_number: '', caller_id_name: '', twiml_app_sid: '' })
+      setConfig({ account_sid: '', auth_token: '', phone_number: '', caller_id_name: '', twiml_app_sid: '', api_key_sid: '', api_key_secret: '' })
       setConfigStatus('not_configured')
+      setHasAuthToken(false)
       setShowDanger(false)
     } catch (err) {
-      setSaveError(err.response?.data?.detail || 'Reset failed')
+      setSaveError(err.response?.data?.detail || 'Échec de la réinitialisation')
     } finally {
       setResetting(false)
     }
@@ -131,7 +146,7 @@ export default function Settings() {
       <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
         <div className="terminal-header mb-1">Admin // Infrastructure</div>
         <h1 className="text-xl font-mono font-bold" style={{ color: '#00ff66', textShadow: '0 0 10px #00ff66' }}>
-          SYSTEM CONFIGURATION
+          CONFIGURATION SIMPLIFIÉE TWILIO
         </h1>
       </motion.div>
 
@@ -158,13 +173,25 @@ export default function Settings() {
         <div>
           <div className="text-sm font-mono font-bold"
             style={{ color: configStatus === 'configured' ? '#00ff66' : '#ff2244' }}>
-            TWILIO: {configStatus === 'configured' ? 'CONFIGURED' : 'NOT CONFIGURED'}
+            TWILIO : {configStatus === 'configured' ? 'OPÉRATIONNEL (EN LIGNE)' : 'NON CONFIGURÉ'}
           </div>
           <div className="text-text-muted text-xs font-mono" style={{ fontSize: '0.65rem' }}>
-            {configStatus === 'configured' ? 'System is ready to make calls' : 'Enter credentials below to enable calling'}
+            {configStatus === 'configured' ? 'Remplissez uniquement les 3 champs ci-dessous. Les clés Web Voice SDK sont générées automatiquement !' : 'Entrez vos 3 identifiants Twilio de votre tableau de bord principal.'}
           </div>
         </div>
       </motion.div>
+
+      {/* Auto-provision Banner */}
+      <div className="p-4 rounded-sm font-mono text-xs border border-neon-green/30 bg-neon-green/5 text-neon-green flex items-start gap-3">
+        <span className="text-base">⚡</span>
+        <div>
+          <div className="font-bold mb-1">AUTOMATISATION COMPLÈTE TWILIO VOICE SDK</div>
+          <div className="text-text-muted" style={{ fontSize: '0.65rem' }}>
+            Vous avez seulement besoin d'entrer vos <strong>3 identifiants de base</strong> présent sur votre écran d'accueil Twilio.
+            Notre système crée et configure automatiquement les clés <strong>API Key (SK...)</strong> et <strong>Application TwiML (AP...)</strong> requises pour passer des appels depuis le navigateur !
+          </div>
+        </div>
+      </div>
 
       {/* Twilio Config Form */}
       <motion.div
@@ -176,14 +203,15 @@ export default function Settings() {
         <div className="flex items-center gap-3 mb-5">
           <div className="w-px h-8 bg-neon-green" style={{ boxShadow: '0 0 6px #00ff66' }} />
           <div>
-            <div className="terminal-header mb-0.5">Telephony Provider</div>
-            <h2 className="text-text-terminal font-mono font-bold">TWILIO CONFIGURATION</h2>
+            <div className="terminal-header mb-0.5">Fournisseur Téléphonique</div>
+            <h2 className="text-text-terminal font-mono font-bold">IDENTIFIANTS REQUIS (3 SEULS CHAMPS)</h2>
           </div>
         </div>
 
-        <form onSubmit={handleSave} className="space-y-4">
+        <form onSubmit={handleSave} className="space-y-5">
           <ConfigField
-            label="ACCOUNT SID (Commence par AC...)"
+            label="1. ACCOUNT SID (Commence par AC...)"
+            required
             value={config.account_sid}
             onChange={(v) => {
               const val = v.trim()
@@ -196,52 +224,74 @@ export default function Settings() {
               }
             }}
             placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-            hint="Trouvé sur la page d'accueil principale de la Console Twilio (Doit commencer par AC)"
+            hint="Situé sur la page d'accueil principale de votre Console Twilio (Doit commencer par AC)"
           />
           <ConfigField
-            label={hasAuthToken ? "AUTH TOKEN (🔒 Jetons sauvegardé et actif en BDD)" : "AUTH TOKEN (Clé secrète Twilio)"}
+            label={hasAuthToken ? "2. AUTH TOKEN (🔒 Sauvegardé & Encrypté)" : "2. AUTH TOKEN (Clé secrète à 32 caractères)"}
+            required
             value={config.auth_token}
             onChange={(v) => setConfig((p) => ({ ...p, auth_token: v }))}
-            placeholder={hasAuthToken ? "✓ Token sauvegardé en base — Laissez vide pour le conserver" : "👉 Collez votre Auth Token Twilio ici (32 caractères)"}
+            placeholder={hasAuthToken ? "✓ Token sauvegardé — Laissez vide pour le conserver" : "Collez votre Auth Token Twilio ici"}
             masked
-            hint={hasAuthToken ? "✓ Votre Auth Token est actuellement sauvegardé en base de données. Laissez ce champ vide sauf si vous désirez le modifier." : "Obligatoire : collez l'Auth Token à 32 caractères situé juste en dessous de l'Account SID sur Twilio"}
+            hint={hasAuthToken ? "✓ Votre Auth Token est sécurisé en base de données. Laissez ce champ vide sauf modification." : "Situé juste sous l'Account SID sur la Console Twilio (32 caractères hexadécimaux)"}
           />
           <ConfigField
-            label="TWILIO PHONE NUMBER"
+            label="3. NUMÉRO DE TÉLÉPHONE TWILIO"
+            required
             value={config.phone_number}
             onChange={(v) => setConfig((p) => ({ ...p, phone_number: v }))}
-            placeholder="+15550000000"
-            hint="Your Twilio outbound number in E.164 format"
+            placeholder="+19286688247"
+            hint="Votre numéro d'appel sortant acheté sur Twilio au format international e.g. +19286688247"
           />
-          <ConfigField
-            label="CALLER ID NAME (CNAM)"
-            value={config.caller_id_name}
-            onChange={(v) => setConfig((p) => ({ ...p, caller_id_name: v }))}
-            placeholder="YOUR COMPANY"
-            hint="Display name for outbound calls (max 15 chars)"
-          />
-          <ConfigField
-            label="TWIML APP SID"
-            value={config.twiml_app_sid}
-            onChange={(v) => setConfig((p) => ({ ...p, twiml_app_sid: v }))}
-            placeholder="APxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-            hint="Your TwiML Application SID for Voice SDK"
-          />
-          <ConfigField
-            label="API KEY SID (SK...)"
-            value={config.api_key_sid || ''}
-            onChange={(v) => setConfig((p) => ({ ...p, api_key_sid: v }))}
-            placeholder="SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-            hint="Twilio API Key SID starting with SK (Required for Web Voice SDK Token validation)"
-          />
-          <ConfigField
-            label="API KEY SECRET"
-            value={config.api_key_secret || ''}
-            onChange={(v) => setConfig((p) => ({ ...p, api_key_secret: v }))}
-            placeholder="Leave blank to keep existing key secret"
-            masked
-            hint="Secret key generated when creating your API Key in Twilio Console"
-          />
+
+          {/* Advanced / Auto-generated Accordion */}
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="text-xs font-mono text-text-muted hover:text-neon-green flex items-center gap-2 py-1 transition-colors"
+            >
+              <span>{showAdvanced ? '▲ MASQUER' : '▼ AFFICHER'} PARAMÈTRES AVANCÉS (GÉNÉRÉS AUTOMATIQUEMENT)</span>
+              {config.api_key_sid && <span className="text-neon-green text-[0.6rem]">[SK CONFIGURÉ]</span>}
+            </button>
+
+            <AnimatePresence>
+              {showAdvanced && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="mt-3 p-4 rounded bg-black/40 border border-white/10 space-y-4"
+                >
+                  <div className="text-[0.7rem] font-mono text-neon-green mb-2">
+                    ✓ Ces paramètres sont générés automatiquement par notre backend dès que vous enregistrez vos 3 identifiants ci-dessus ! Vous n'avez pas besoin d'y toucher.
+                  </div>
+                  <ConfigField
+                    label="TWIML APP SID (AP...)"
+                    value={config.twiml_app_sid}
+                    onChange={(v) => setConfig((p) => ({ ...p, twiml_app_sid: v }))}
+                    placeholder="Auto-généré : APxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    hint="Application TwiML configurée pour router les appels vocaux du navigateur"
+                  />
+                  <ConfigField
+                    label="API KEY SID (SK...)"
+                    value={config.api_key_sid}
+                    onChange={(v) => setConfig((p) => ({ ...p, api_key_sid: v }))}
+                    placeholder="Auto-généré : SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    hint="Clé API pour la signature sécurisée des jetons Web Voice SDK"
+                  />
+                  <ConfigField
+                    label="API KEY SECRET"
+                    value={config.api_key_secret}
+                    onChange={(v) => setConfig((p) => ({ ...p, api_key_secret: v }))}
+                    placeholder="Auto-généré lors de la création de la clé"
+                    masked
+                    hint="Secret associé à la clé API Twilio"
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
 
           {/* Feedback */}
           <AnimatePresence>
@@ -268,7 +318,7 @@ export default function Settings() {
               disabled={saving}
               className="btn-cyber flex-1 py-3 text-sm font-bold rounded-sm"
             >
-              {saving ? '⟳ SAVING...' : '▶ SAVE CONFIG'}
+              {saving ? '⟳ SAUVEGARDE ET GÉNÉRATION AUTOMATIQUE...' : '▶ ENREGISTRER (SAUVEGARDER & PROVISIONNER)'}
             </button>
             <button
               type="button"
@@ -277,7 +327,7 @@ export default function Settings() {
               className="btn-cyber px-6 py-3 text-sm rounded-sm"
               style={{ borderColor: '#00d4ff', color: '#00d4ff', opacity: configStatus !== 'configured' ? 0.4 : 1 }}
             >
-              {testing ? '⟳' : '⚡ TEST'}
+              {testing ? '⟳' : '⚡ TESTER CONNEXION'}
             </button>
           </div>
         </form>
@@ -313,8 +363,8 @@ export default function Settings() {
         <div className="flex items-center gap-3 mb-4">
           <div className="w-px h-8 bg-neon-danger" style={{ boxShadow: '0 0 6px #ff2244' }} />
           <div>
-            <div className="terminal-header mb-0.5" style={{ color: '#ff224488' }}>Irreversible Actions</div>
-            <h2 className="text-neon-danger font-mono font-bold">DANGER ZONE</h2>
+            <div className="terminal-header mb-0.5" style={{ color: '#ff224488' }}>Actions Irréversibles</div>
+            <h2 className="text-neon-danger font-mono font-bold">ZONE DE DANGER</h2>
           </div>
         </div>
 
@@ -322,7 +372,7 @@ export default function Settings() {
           onClick={() => setShowDanger(!showDanger)}
           className="btn-cyber btn-danger px-4 py-2 text-xs rounded-sm"
         >
-          {showDanger ? '▲ HIDE' : '▼ EXPAND DANGER ZONE'}
+          {showDanger ? '▲ MASQUER' : '▼ AFFICHER LA ZONE DE DANGER'}
         </button>
 
         <AnimatePresence>
@@ -334,16 +384,16 @@ export default function Settings() {
               className="mt-4 p-4 rounded-sm"
               style={{ background: 'rgba(255,34,68,0.05)', border: '1px solid rgba(255,34,68,0.2)' }}
             >
-              <div className="text-text-terminal font-mono text-sm font-bold mb-2">Reset Twilio Configuration</div>
+              <div className="text-text-terminal font-mono text-sm font-bold mb-2">Réinitialiser la configuration Twilio</div>
               <div className="text-text-muted text-xs font-mono mb-4">
-                This will permanently delete all stored Twilio credentials. Calling will be disabled immediately.
+                Ceci supprimera définitivement tous les identifiants Twilio stockés. Les appels seront désactivés immédiatement.
               </div>
               <button
                 onClick={handleReset}
                 disabled={resetting}
                 className="btn-cyber btn-danger px-6 py-2 text-xs rounded-sm font-bold"
               >
-                {resetting ? '⟳ RESETTING...' : '⛔ RESET CONFIG'}
+                {resetting ? '⟳ RÉINITIALISATION...' : '⛔ RÉINITIALISER'}
               </button>
             </motion.div>
           )}
