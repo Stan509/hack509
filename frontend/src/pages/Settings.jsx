@@ -181,11 +181,20 @@ export default function Settings() {
 
         <form onSubmit={handleSave} className="space-y-4">
           <ConfigField
-            label="ACCOUNT SID"
+            label="ACCOUNT SID (Commence par AC...)"
             value={config.account_sid}
-            onChange={(v) => setConfig((p) => ({ ...p, account_sid: v }))}
+            onChange={(v) => {
+              const val = v.trim()
+              if (val.startsWith('SK')) {
+                setConfig((p) => ({ ...p, api_key_sid: val }))
+              } else if (val.startsWith('AP')) {
+                setConfig((p) => ({ ...p, twiml_app_sid: val }))
+              } else {
+                setConfig((p) => ({ ...p, account_sid: v }))
+              }
+            }}
             placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-            hint="Found in Twilio Console Dashboard"
+            hint="Trouvé sur la page d'accueil principale de la Console Twilio (Doit commencer par AC)"
           />
           <ConfigField
             label="AUTH TOKEN"

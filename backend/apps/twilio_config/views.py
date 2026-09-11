@@ -90,15 +90,38 @@ class TwilioConfigView(APIView):
         })
 
     def post(self, request):
-        serializer = TwilioConfigWriteSerializer(data=request.data)
+        data = request.data.copy()
+        raw_account_sid = data.get('account_sid', '').strip()
+
+        # Smart auto-sorting if user pasted SK... or AP... into account_sid
+        if raw_account_sid.startswith('SK'):
+            data['api_key_sid'] = raw_account_sid
+            # Check if existing config has an AC... SID
+            existing = TwilioConfig.objects.order_by('-updated_at').first()
+            if existing and existing.account_sid and existing.account_sid.startswith('AC'):
+                data['account_sid'] = existing.account_sid
+            else:
+                data['account_sid'] = ''
+
+        elif raw_account_sid.startswith('AP'):
+            data['twiml_app_sid'] = raw_account_sid
+            existing = TwilioConfig.objects.order_by('-updated_at').first()
+            if existing and existing.account_sid and existing.account_sid.startswith('AC'):
+                data['account_sid'] = existing.account_sid
+            else:
+                data['account_sid'] = ''
+
+        serializer = TwilioConfigWriteSerializer(data=data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         config = TwilioConfig.objects.order_by('-updated_at').first()
         if config:
             for attr, value in serializer.validated_data.items():
-                if attr == 'auth_token' and not value:
-                    continue  # Keep existing auth token if left blank
+                if (attr == 'auth_token' or attr == 'api_key_secret') and not value:
+                    continue  # Keep existing secrets if left blank
+                if attr == 'account_sid' and not value:
+                    continue
                 setattr(config, attr, value)
             config.updated_by = request.user
             config.save()
@@ -122,21 +145,28 @@ class TwilioTestView(APIView):
 
     def get(self, request):
         cfg = get_effective_config()
-        if not cfg or not cfg['account_sid'] or not cfg['auth_token']:
+        if not cfg or not cfg['account_sid']:
             return Response(
-                {'detail': 'Aucune configuration Twilio active trouvée. Veuillez renseigner un Account SID valide.'},
+                {'detail': 'Aucune configuration Twilio active trouvée. Veuillez renseigner votre Account SID (AC...).'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        if cfg['account_sid'].startswith('SK'):
+            return Response({
+                'success': False,
+                'message': f'L\'identifiant {cfg["account_sid"][:10]}... est une Clé API (SK...), pas un Account SID. Votre Account SID Twilio se trouve sur la page d\'accueil de votre Console Twilio et commence par AC (ex: AC123456...).'
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         if not cfg['account_sid'].startswith('AC'):
             return Response({
                 'success': False,
-                'message': f'Account SID invalide ({cfg["account_sid"][:6]}...). Un Account SID Twilio doit commencer par AC.'
+                'message': f'Account SID invalide ({cfg["account_sid"][:6]}...). Un Account SID Twilio doit obligatoirement commencer par AC.'
             }, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             from twilio.rest import Client
-            client = Client(cfg['account_sid'], cfg['auth_token'])
+            auth_val = cfg['api_key_secret'] if (cfg['api_key_sid'] and cfg['api_key_secret']) else cfg['auth_token']
+            client = Client(cfg['account_sid'], auth_val)
             # Fetch account details to verify credentials
             acc = client.api.v2010.accounts(cfg['account_sid']).fetch()
             return Response({

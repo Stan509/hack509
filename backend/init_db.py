@@ -41,10 +41,11 @@ tw_cfg, _ = TwilioConfig.objects.get_or_create(
     id=1,
     defaults={
         'account_sid': 'OQ04006c77713a7d32321cf6175bece87c',
-        'auth_token': 'kiWo6Uo6_AXSkaeywkutY3w03p_snRn_FgoD_oynqyuJNGvOUBU7KsnoRYpRg-f4l2aTEOqHt3Wb0eVwxfECkA'
+        'auth_token': 'kiWo6Uo6_AXSkaeywkutY3w03p_snRn_FgoD_oynqyuJNGvOUBU7KsnoRYpRg-f4l2aTEOqHt3Wb0eVwxfECkA',
+        'phone_number': '+19286688247',
     }
 )
-print(f"TwilioConfig setup complete: {tw_cfg.account_sid}")
+print(f"TwilioConfig setup complete: {tw_cfg.phone_number}")
 
 # Ensure test contact exists
 c, _ = Contact.objects.get_or_create(
