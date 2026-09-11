@@ -28,6 +28,18 @@ class TwilioConfig(models.Model):
         blank=True,
         help_text='TwiML App SID for browser-based calling'
     )
+    api_key_sid = models.CharField(
+        max_length=100,
+        blank=True,
+        default='',
+        help_text='Twilio API Key SID starting with SK...'
+    )
+    api_key_secret = models.CharField(
+        max_length=200,
+        blank=True,
+        default='',
+        help_text='Twilio API Key Secret'
+    )
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(
         'accounts.CustomUser',

@@ -57,8 +57,14 @@ const useTwilio = () => {
       })
 
       dev.on('error', (err) => {
-        setError(err.message || 'Twilio device error')
+        const errMsg = err.message || 'Twilio device error'
         console.error('[Twilio] Error:', err)
+        if (err.code === 20101 || errMsg.includes('20101') || errMsg.includes('AccessTokenInvalid')) {
+          setError('AccessTokenInvalid (20101): Créez une Clé API (SK...) dans Twilio Console (Account > API Keys) ou passez en mode Simulation.')
+          setSimulationMode(true)
+        } else {
+          setError(errMsg)
+        }
       })
 
       dev.on('incoming', (call) => {

@@ -27,13 +27,17 @@ def get_effective_config():
     env_token = os.environ.get('TWILIO_AUTH_TOKEN')
     env_phone = os.environ.get('TWILIO_PHONE_NUMBER')
     env_app_sid = os.environ.get('TWILIO_TWIML_APP_SID')
+    env_key_sid = os.environ.get('TWILIO_API_KEY_SID')
+    env_key_secret = os.environ.get('TWILIO_API_KEY_SECRET')
 
-    if env_sid and env_token:
+    if env_sid and (env_token or env_key_secret):
         return {
             'account_sid': env_sid,
-            'auth_token': env_token,
+            'auth_token': env_token or '',
             'phone_number': env_phone or '',
             'twiml_app_sid': env_app_sid or '',
+            'api_key_sid': env_key_sid or '',
+            'api_key_secret': env_key_secret or '',
         }
 
     config = TwilioConfig.objects.order_by('-updated_at').first()
@@ -43,6 +47,8 @@ def get_effective_config():
             'auth_token': config.auth_token,
             'phone_number': config.phone_number,
             'twiml_app_sid': config.twiml_app_sid,
+            'api_key_sid': getattr(config, 'api_key_sid', '') or '',
+            'api_key_secret': getattr(config, 'api_key_secret', '') or '',
         }
 
     return None
@@ -171,18 +177,25 @@ class TwilioTokenView(APIView):
             from twilio.jwt.access_token import AccessToken
             from twilio.jwt.access_token.grants import VoiceGrant
 
-            twiml_app_sid = cfg.get('twiml_app_sid') or None
+            account_sid = cfg['account_sid']
+            key_sid = cfg.get('api_key_sid', '')
+            key_secret = cfg.get('api_key_secret', '')
+
+            # Twilio AccessToken requires an API Key SID (starting with SK) and secret for browser Voice SDK.
+            # If SK... is available, use it for signing; otherwise use account_sid and auth_token as fallback.
+            signing_key_sid = key_sid if (key_sid and key_sid.startswith('SK')) else account_sid
+            secret_key = key_secret if (key_sid and key_sid.startswith('SK')) else cfg['auth_token']
 
             token = AccessToken(
-                cfg['account_sid'],
-                cfg['account_sid'],  # API key / Account SID
-                cfg['auth_token'],   # Secret key
+                account_sid,
+                signing_key_sid,
+                secret_key,
                 identity=identity,
                 ttl=3600,
             )
 
             voice_grant = VoiceGrant(
-                outgoing_application_sid=twiml_app_sid,
+                outgoing_application_sid=cfg.get('twiml_app_sid') or None,
                 incoming_allow=True,
             )
             token.add_grant(voice_grant)

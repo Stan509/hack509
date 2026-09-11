@@ -16,7 +16,7 @@ class TwilioConfigSerializer(serializers.ModelSerializer):
         model = TwilioConfig
         fields = [
             'id', 'account_sid', 'auth_token_masked', 'phone_number',
-            'cnam_name', 'twiml_app_sid', 'is_configured', 'updated_at', 'updated_by',
+            'cnam_name', 'twiml_app_sid', 'api_key_sid', 'is_configured', 'updated_at', 'updated_by',
         ]
         read_only_fields = ['id', 'updated_at', 'updated_by']
 
@@ -29,16 +29,18 @@ class TwilioConfigSerializer(serializers.ModelSerializer):
 
 class TwilioConfigWriteSerializer(serializers.ModelSerializer):
     """
-    Serializer for creating/updating TwilioConfig - accepts real auth token.
+    Serializer for creating/updating TwilioConfig - accepts real auth token and API Key.
     """
     auth_token = serializers.CharField(required=False, allow_blank=True, default='')
     phone_number = serializers.CharField(required=False, allow_blank=True, default='')
+    api_key_sid = serializers.CharField(required=False, allow_blank=True, default='')
+    api_key_secret = serializers.CharField(required=False, allow_blank=True, default='')
 
     class Meta:
         model = TwilioConfig
         fields = [
             'account_sid', 'auth_token', 'phone_number',
-            'cnam_name', 'twiml_app_sid',
+            'cnam_name', 'twiml_app_sid', 'api_key_sid', 'api_key_secret',
         ]
 
     def validate_phone_number(self, value):

@@ -39,6 +39,8 @@ export default function Settings() {
     phone_number: '',
     caller_id_name: '',
     twiml_app_sid: '',
+    api_key_sid: '',
+    api_key_secret: '',
   })
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState('')
@@ -60,6 +62,8 @@ export default function Settings() {
           phone_number: d.phone_number || '',
           caller_id_name: d.caller_id_name || '',
           twiml_app_sid: d.twiml_app_sid || '',
+          api_key_sid: d.api_key_sid || '',
+          api_key_secret: '',
         })
         setConfigStatus(d.is_configured ? 'configured' : 'not_configured')
       })
@@ -75,9 +79,10 @@ export default function Settings() {
     setSaveMsg('')
     setSaveError('')
     try {
-      // Only send auth_token if it was filled in
+      // Only send masked/secret fields if filled in
       const payload = { ...config }
       if (!payload.auth_token) delete payload.auth_token
+      if (!payload.api_key_secret) delete payload.api_key_secret
 
       await api.post('/api/twilio/config/', payload)
       setSaveMsg('CONFIGURATION SAVED SUCCESSFULLY')
@@ -210,6 +215,21 @@ export default function Settings() {
             onChange={(v) => setConfig((p) => ({ ...p, twiml_app_sid: v }))}
             placeholder="APxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
             hint="Your TwiML Application SID for Voice SDK"
+          />
+          <ConfigField
+            label="API KEY SID (SK...)"
+            value={config.api_key_sid || ''}
+            onChange={(v) => setConfig((p) => ({ ...p, api_key_sid: v }))}
+            placeholder="SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+            hint="Twilio API Key SID starting with SK (Required for Web Voice SDK Token validation)"
+          />
+          <ConfigField
+            label="API KEY SECRET"
+            value={config.api_key_secret || ''}
+            onChange={(v) => setConfig((p) => ({ ...p, api_key_secret: v }))}
+            placeholder="Leave blank to keep existing key secret"
+            masked
+            hint="Secret key generated when creating your API Key in Twilio Console"
           />
 
           {/* Feedback */}
