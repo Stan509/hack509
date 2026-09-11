@@ -40,9 +40,10 @@ print(f"Operator user setup complete (created={op_created})")
 tw_cfg, _ = TwilioConfig.objects.get_or_create(
     id=1,
     defaults={
-        'account_sid': 'OQ04006c77713a7d32321cf6175bece87c',
-        'auth_token': 'kiWo6Uo6_AXSkaeywkutY3w03p_snRn_FgoD_oynqyuJNGvOUBU7KsnoRYpRg-f4l2aTEOqHt3Wb0eVwxfECkA',
+        'account_sid': os.environ.get('TWILIO_ACCOUNT_SID', ''),
+        'auth_token': os.environ.get('TWILIO_AUTH_TOKEN', ''),
         'phone_number': '+19286688247',
+        'twiml_app_sid': os.environ.get('TWILIO_TWIML_APP_SID', ''),
     }
 )
 print(f"TwilioConfig setup complete: {tw_cfg.phone_number}")

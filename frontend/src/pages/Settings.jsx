@@ -197,12 +197,12 @@ export default function Settings() {
             hint="Trouvé sur la page d'accueil principale de la Console Twilio (Doit commencer par AC)"
           />
           <ConfigField
-            label="AUTH TOKEN"
+            label="AUTH TOKEN (Clé secrète Twilio)"
             value={config.auth_token}
             onChange={(v) => setConfig((p) => ({ ...p, auth_token: v }))}
-            placeholder="Leave blank to keep existing token"
+            placeholder="👉 Collez votre Auth Token Twilio ici (32 caractères)"
             masked
-            hint="Stored encrypted — leave blank to keep current value"
+            hint="Obligatoire : collez l'Auth Token à 32 caractères situé juste en dessous de l'Account SID sur Twilio"
           />
           <ConfigField
             label="TWILIO PHONE NUMBER"
