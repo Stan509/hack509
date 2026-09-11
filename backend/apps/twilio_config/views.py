@@ -20,33 +20,28 @@ import os
 import json
 from django.conf import settings
 
-CONFIG_FILE = os.path.join(settings.BASE_DIR, 'twilio_saved_config.json')
-
-def load_persistent_config():
-    try:
-        if os.path.exists(CONFIG_FILE):
-            with open(CONFIG_FILE, 'r') as f:
-                return json.load(f)
-    except Exception as e:
-        logger.warning(f"Could not load persistent config file: {e}")
-    return {}
+CONFIG_FILE_PATH = os.path.join(settings.BASE_DIR, '.twilio_saved_config.json')
 
 def save_persistent_config(data):
     try:
-        current = load_persistent_config()
-        for k, v in data.items():
-            if v:  # Only overwrite non-empty fields
-                current[k] = str(v).strip()
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump(current, f)
+        with open(CONFIG_FILE_PATH, 'w') as f:
+            json.dump(data, f, indent=2)
     except Exception as e:
-        logger.warning(f"Could not save persistent config file: {e}")
+        logger.warning(f"Could not save persistent twilio config: {e}")
 
+def load_persistent_config():
+    if os.path.exists(CONFIG_FILE_PATH):
+        try:
+            with open(CONFIG_FILE_PATH, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"Could not load persistent twilio config: {e}")
+    return None
 
 def get_effective_config():
     """
     Returns effective Twilio configuration.
-    Prefers environment variables, persistent json backup, then valid DB record.
+    Prefers environment variables, then DB record, then persistent backup file.
     """
     env_sid = os.environ.get('TWILIO_ACCOUNT_SID')
     env_token = os.environ.get('TWILIO_AUTH_TOKEN')
@@ -66,24 +61,19 @@ def get_effective_config():
         }
 
     config = TwilioConfig.objects.order_by('-updated_at').first()
-    file_cfg = load_persistent_config()
-
-    account_sid = (config.account_sid if config and not config.account_sid.startswith('OQ04') else '') or file_cfg.get('account_sid', '')
-    auth_token = (config.auth_token if config and config.auth_token and not config.auth_token.startswith('kiWo') else '') or file_cfg.get('auth_token', '')
-    phone_number = (config.phone_number if config else '') or file_cfg.get('phone_number', '')
-    twiml_app_sid = (config.twiml_app_sid if config else '') or file_cfg.get('twiml_app_sid', '')
-    api_key_sid = (getattr(config, 'api_key_sid', '') if config else '') or file_cfg.get('api_key_sid', '')
-    api_key_secret = (getattr(config, 'api_key_secret', '') if config else '') or file_cfg.get('api_key_secret', '')
-
-    if account_sid and not account_sid.startswith('OQ04'):
+    if config and config.account_sid and not config.account_sid.startswith('OQ04'):
         return {
-            'account_sid': account_sid,
-            'auth_token': auth_token,
-            'phone_number': phone_number,
-            'twiml_app_sid': twiml_app_sid,
-            'api_key_sid': api_key_sid,
-            'api_key_secret': api_key_secret,
+            'account_sid': config.account_sid,
+            'auth_token': config.auth_token,
+            'phone_number': config.phone_number,
+            'twiml_app_sid': config.twiml_app_sid,
+            'api_key_sid': getattr(config, 'api_key_sid', '') or '',
+            'api_key_secret': getattr(config, 'api_key_secret', '') or '',
         }
+
+    file_cfg = load_persistent_config()
+    if file_cfg and file_cfg.get('account_sid') and not file_cfg['account_sid'].startswith('OQ04'):
+        return file_cfg
 
     return None
 
@@ -109,29 +99,22 @@ class TwilioConfigView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         
-        is_valid = bool(eff and eff['account_sid'].startswith('AC') and eff['auth_token'])
-        auth_token_masked = ''
-        has_auth_token = False
-        if eff and eff.get('auth_token'):
-            has_auth_token = True
-            tok = eff['auth_token']
-            auth_token_masked = tok[:4] + '****' + tok[-4:] if len(tok) > 8 else '••••••••••••••••'
+        is_valid = bool(eff and eff['account_sid'].startswith('AC'))
+        has_token = bool(eff and eff.get('auth_token') and len(eff['auth_token']) > 5)
 
         if config:
             serializer_data = TwilioConfigSerializer(config).data
             serializer_data['is_configured'] = is_valid
-            serializer_data['has_auth_token'] = has_auth_token
-            serializer_data['auth_token_masked'] = auth_token_masked
+            serializer_data['has_auth_token'] = has_token
             return Response(serializer_data)
         
         return Response({
-            'account_sid': eff['account_sid'] if eff else '',
-            'phone_number': eff['phone_number'] if eff else '',
-            'twiml_app_sid': eff['twiml_app_sid'] if eff else '',
-            'api_key_sid': eff['api_key_sid'] if eff else '',
+            'account_sid': eff['account_sid'],
+            'phone_number': eff['phone_number'],
+            'twiml_app_sid': eff['twiml_app_sid'],
+            'api_key_sid': eff.get('api_key_sid', ''),
             'is_configured': is_valid,
-            'has_auth_token': has_auth_token,
-            'auth_token_masked': auth_token_masked,
+            'has_auth_token': has_token,
             'updated_at': None,
         })
 
@@ -173,12 +156,20 @@ class TwilioConfigView(APIView):
         else:
             config = serializer.save(updated_by=request.user)
 
-        # Save to persistent file backup as well
-        save_persistent_config(serializer.validated_data)
+        # Save to persistent file backup
+        save_data = {
+            'account_sid': config.account_sid,
+            'auth_token': config.auth_token,
+            'phone_number': config.phone_number,
+            'twiml_app_sid': config.twiml_app_sid,
+            'api_key_sid': getattr(config, 'api_key_sid', '') or '',
+            'api_key_secret': getattr(config, 'api_key_secret', '') or '',
+        }
+        save_persistent_config(save_data)
 
         res_data = TwilioConfigSerializer(config).data
-        res_data['is_configured'] = config.account_sid.startswith('AC') and bool(config.auth_token)
-        res_data['has_auth_token'] = bool(config.auth_token)
+        res_data['is_configured'] = config.account_sid.startswith('AC')
+        res_data['has_auth_token'] = bool(config.auth_token and len(config.auth_token) > 5)
         return Response(res_data, status=status.HTTP_200_OK)
 
     def delete(self, request):
