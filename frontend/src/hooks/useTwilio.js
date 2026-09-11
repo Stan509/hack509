@@ -108,12 +108,11 @@ const useTwilio = () => {
     setIsOnHold(false)
 
     if (simulationMode) {
-      // Simulation mode: fake call lifecycle
-      setCallStatus('connecting')
-      setTimeout(() => setCallStatus('ringing'), 800)
+      // Simulation mode: fake call lifecycle with realistic ringback sound
+      setCallStatus('ringing')
       simTimerRef.current = setTimeout(() => {
         setCallStatus('active')
-      }, 2500)
+      }, 4500)
       return { simulated: true }
     }
 
@@ -215,7 +214,7 @@ const useTwilio = () => {
   }, [simulationMode])
 
   useEffect(() => {
-    if (callStatus === 'connecting' || callStatus === 'ringing') {
+    if (callStatus === 'connecting' || callStatus === 'ringing' || callStatus === 'dialing') {
       callAudio.startDialingSound()
     } else if (callStatus === 'active') {
       callAudio.playConnectedSound()

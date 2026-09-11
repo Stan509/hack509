@@ -85,14 +85,14 @@ class TwilioTestView(APIView):
             acc = client.api.v2010.accounts(config.account_sid).fetch()
             return Response({
                 'success': True,
-                'message': f'Successfully connected to Twilio Account: {acc.friendly_name} (Status: {acc.status})'
+                'message': f'Connecté avec succès à Twilio : {acc.friendly_name} (Statut: {acc.status})'
             })
         except Exception as exc:
-            # Return success with credentials saved status if API test falls back
             return Response({
-                'success': True,
-                'message': f'Credentials configured and validated for ID: {config.account_sid[:6]}...'
-            })
+                'success': False,
+                'detail': f'Erreur d\'authentification Twilio : {str(exc)}',
+                'message': 'Identifiants Twilio non valides. Veuillez saisir votre Account SID (AC...) et votre Auth Token réels dans les paramètres.'
+            }, status=status.HTTP_400_BAD_REQUEST)
 
 
 class TwilioTokenView(APIView):
