@@ -48,6 +48,7 @@ export default function Settings() {
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState(null)
   const [configStatus, setConfigStatus] = useState(null)
+  const [hasTokenSaved, setHasTokenSaved] = useState(false)
   const [loadError, setLoadError] = useState('')
   const [showDanger, setShowDanger] = useState(false)
   const [resetting, setResetting] = useState(false)
@@ -56,9 +57,11 @@ export default function Settings() {
     api.get('/api/twilio/config/')
       .then((res) => {
         const d = res.data
+        const tokenSaved = Boolean(d.has_auth_token || (d.auth_token_masked && !d.auth_token_masked.includes('kiWo')))
+        setHasTokenSaved(tokenSaved)
         setConfig({
           account_sid: d.account_sid || '',
-          auth_token: '',  // Never pre-fill token for security
+          auth_token: tokenSaved ? '••••••••••••••••••••••••••••••••' : '',
           phone_number: d.phone_number || '',
           caller_id_name: d.caller_id_name || '',
           twiml_app_sid: d.twiml_app_sid || '',
@@ -79,13 +82,18 @@ export default function Settings() {
     setSaveMsg('')
     setSaveError('')
     try {
-      // Only send masked/secret fields if filled in
       const payload = { ...config }
-      if (!payload.auth_token) delete payload.auth_token
-      if (!payload.api_key_secret) delete payload.api_key_secret
+      if (!payload.auth_token || payload.auth_token.includes('•') || payload.auth_token.includes('*')) {
+        delete payload.auth_token
+      }
+      if (!payload.api_key_secret || payload.api_key_secret.includes('•') || payload.api_key_secret.includes('*')) {
+        delete payload.api_key_secret
+      }
 
-      await api.post('/api/twilio/config/', payload)
+      const res = await api.post('/api/twilio/config/', payload)
       setSaveMsg('CONFIGURATION SAVED SUCCESSFULLY')
+      setHasTokenSaved(true)
+      setConfig((p) => ({ ...p, auth_token: '••••••••••••••••••••••••••••••••' }))
       setConfigStatus('configured')
       setTimeout(() => setSaveMsg(''), 4000)
     } catch (err) {
@@ -113,8 +121,9 @@ export default function Settings() {
     setResetting(true)
     try {
       await api.delete('/api/twilio/config/')
-      setConfig({ account_sid: '', auth_token: '', phone_number: '', caller_id_name: '', twiml_app_sid: '' })
+      setConfig({ account_sid: '', auth_token: '', phone_number: '', caller_id_name: '', twiml_app_sid: '', api_key_sid: '', api_key_secret: '' })
       setConfigStatus('not_configured')
+      setHasTokenSaved(false)
       setShowDanger(false)
     } catch (err) {
       setSaveError(err.response?.data?.detail || 'Reset failed')
@@ -200,9 +209,9 @@ export default function Settings() {
             label="AUTH TOKEN (Clé secrète Twilio)"
             value={config.auth_token}
             onChange={(v) => setConfig((p) => ({ ...p, auth_token: v }))}
-            placeholder="👉 Collez votre Auth Token Twilio ici (32 caractères)"
+            placeholder={hasTokenSaved ? "••••••••••••••••••••••••••••••••" : "👉 Collez votre Auth Token Twilio ici (32 caractères)"}
             masked
-            hint="Obligatoire : collez l'Auth Token à 32 caractères situé juste en dessous de l'Account SID sur Twilio"
+            hint={hasTokenSaved ? "✓ AUTH TOKEN CONSERVÉ EN MÉMOIRE (Modifiez uniquement si vous souhaitez le remplacer)" : "Obligatoire : collez l'Auth Token à 32 caractères situé sous l'Account SID sur Twilio"}
           />
           <ConfigField
             label="TWILIO PHONE NUMBER"
