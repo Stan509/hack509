@@ -25,6 +25,9 @@ const useTwilio = () => {
       const res = await axios.get(`${API_BASE}/api/twilio/token/`, {
         headers: { Authorization: `Bearer ${token}` },
       })
+      if (res.data?.simulation || res.data?.token?.startsWith('mock_token')) {
+        return null // Don't feed mock tokens to Twilio Device SDK to prevent 20101 errors
+      }
       return res.data.token || res.data.access_token
     } catch {
       return null
