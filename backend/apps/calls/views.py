@@ -1,6 +1,7 @@
 """
 Calls views - Call log management and statistics.
 """
+import logging
 from django.utils import timezone
 from django.db.models import Count, Q
 from rest_framework import status
@@ -12,6 +13,8 @@ from rest_framework.pagination import PageNumberPagination
 from apps.contacts.models import Contact
 from .models import CallLog
 from .serializers import CallLogSerializer, CallLogCreateSerializer, CallLogUpdateSerializer
+
+logger = logging.getLogger(__name__)
 
 
 class CallLogPagination(PageNumberPagination):
@@ -156,32 +159,70 @@ class CallStatsView(APIView):
 
 
 from django.http import HttpResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 from apps.twilio_config.models import TwilioConfig
+from apps.twilio_config.views import get_effective_config
 
+
+def clean_e164(num_str):
+    """Clean phone number string to E.164 format e.g. +19286688247."""
+    if not num_str:
+        return ''
+    num_str = str(num_str).strip()
+    digits = ''.join(c for c in num_str if c.isdigit())
+    if not digits:
+        return ''
+    return '+' + digits
+
+
+@method_decorator(csrf_exempt, name='dispatch')
 class TwimlVoiceView(APIView):
     """
-    POST /api/calls/twiml/
+    POST / GET /api/calls/twiml/
     TwiML Webhook endpoint for Twilio Voice SDK outbound calls.
     Returns TwiML XML instructing Twilio to dial the destination phone number.
     """
     permission_classes = []
+    authentication_classes = []
 
-    def post(self, request):
-        to_number = request.POST.get('To') or request.POST.get('number') or request.query_params.get('To') or ''
-        config = TwilioConfig.objects.order_by('-updated_at').first()
-        caller_id = config.phone_number if config else ''
+    def get(self, request, *args, **kwargs):
+        return self.generate_twiml(request)
+
+    def post(self, request, *args, **kwargs):
+        return self.generate_twiml(request)
+
+    def generate_twiml(self, request):
+        # Extract target phone number from POST or GET parameters sent by Twilio Device SDK
+        raw_to = (
+            request.POST.get('To') or
+            request.POST.get('number') or
+            request.POST.get('phone') or
+            request.GET.get('To') or
+            request.GET.get('number') or
+            ''
+        )
+        to_number = clean_e164(raw_to)
+
+        # Retrieve effective Twilio caller ID from config or environment
+        cfg = get_effective_config()
+        raw_caller_id = cfg.get('phone_number', '') if cfg else ''
+        caller_id = clean_e164(raw_caller_id)
+
+        logger.info(f"TwiML Voice Webhook: Outgoing call to '{to_number}' (Caller ID: '{caller_id}')")
 
         if to_number:
+            caller_attr = f' callerId="{caller_id}"' if caller_id else ''
             twiml = f'''<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Dial callerId="{caller_id}">
+    <Dial{caller_attr}>
         <Number>{to_number}</Number>
     </Dial>
 </Response>'''
         else:
             twiml = '''<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say>No target number specified.</Say>
+    <Say language="fr-FR">Aucun numéro de destination spécifié.</Say>
 </Response>'''
 
         return HttpResponse(twiml, content_type='text/xml')
