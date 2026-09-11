@@ -76,6 +76,7 @@ const useDialerWS = () => {
     setWsStatus('connecting')
 
     const baseUrl = getWsUrl()
+    const token = localStorage.getItem('h509_token')
     const url = token ? `${baseUrl}?token=${encodeURIComponent(token)}` : baseUrl
 
     try {

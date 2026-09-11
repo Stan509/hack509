@@ -50,9 +50,8 @@ export function DialerProvider({ children }) {
 
     setWsStatus('connecting')
     const baseUrl = getWsUrl()
-    // token may be null when WS doesn't require auth header in URL
-    const storedToken = token || localStorage.getItem('h509_token')
-    const url = storedToken ? `${baseUrl}?token=${storedToken}` : baseUrl
+    const tokenVal = token || localStorage.getItem('h509_token')
+    const url = tokenVal ? `${baseUrl}?token=${encodeURIComponent(tokenVal)}` : baseUrl
 
     try {
       const ws = new WebSocket(url)
@@ -89,8 +88,7 @@ export function DialerProvider({ children }) {
       setWsStatus('disconnected')
       console.warn('[DialerWS] Connection failed:', err)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, token])
+  }, [isAuthenticated])
 
   const handleMessage = useCallback((data) => {
     setLastEvent(data)
