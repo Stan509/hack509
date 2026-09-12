@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useAuth } from '../contexts/AuthContext.jsx'
+import { useAuth, api } from '../contexts/AuthContext.jsx'
 import { useDialer } from '../contexts/DialerContext.jsx'
 import ContactCard from '../components/ContactCard.jsx'
 import TPSGeneratorModal from '../components/TPSGeneratorModal.jsx'
