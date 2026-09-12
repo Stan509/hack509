@@ -36,7 +36,9 @@ function ConfigField({ label, value, onChange, type = 'text', placeholder = '', 
 export default function Settings() {
   const { api } = useAuth()
 
+  const [providerType, setProviderType] = useState('twilio') // 'twilio' | 'asterisk'
   const [config, setConfig] = useState({
+    provider_type: 'twilio',
     account_sid: '',
     auth_token: '',
     phone_number: '',
@@ -44,6 +46,11 @@ export default function Settings() {
     twiml_app_sid: '',
     api_key_sid: '',
     api_key_secret: '',
+    sip_ws_url: '',
+    sip_username: '',
+    sip_password: '',
+    sip_domain: '',
+    sip_outbound_proxy: '',
   })
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState('')
@@ -61,7 +68,9 @@ export default function Settings() {
     api.get('/api/twilio/config/')
       .then((res) => {
         const d = res.data
+        setProviderType(d.provider_type || 'twilio')
         setConfig({
+          provider_type: d.provider_type || 'twilio',
           account_sid: d.account_sid || '',
           auth_token: '',
           phone_number: d.phone_number || '',
@@ -69,6 +78,11 @@ export default function Settings() {
           twiml_app_sid: d.twiml_app_sid || '',
           api_key_sid: d.api_key_sid || '',
           api_key_secret: '',
+          sip_ws_url: d.sip_ws_url || '',
+          sip_username: d.sip_username || '',
+          sip_password: '',
+          sip_domain: d.sip_domain || '',
+          sip_outbound_proxy: d.sip_outbound_proxy || '',
         })
         setConfigStatus(d.is_configured ? 'configured' : 'not_configured')
         setHasAuthToken(Boolean(d.has_auth_token))
@@ -85,23 +99,22 @@ export default function Settings() {
     setSaveMsg('')
     setSaveError('')
     try {
-      const payload = { ...config }
+      const payload = { ...config, provider_type: providerType }
       if (!payload.auth_token) delete payload.auth_token
       if (!payload.api_key_secret) delete payload.api_key_secret
+      if (!payload.sip_password) delete payload.sip_password
 
       const res = await api.post('/api/twilio/config/', payload)
       const d = res.data
-      setConfig({
-        account_sid: d.account_sid || '',
+      setConfig((prev) => ({
+        ...prev,
+        ...d,
         auth_token: '',
-        phone_number: d.phone_number || '',
-        caller_id_name: d.caller_id_name || '',
-        twiml_app_sid: d.twiml_app_sid || '',
-        api_key_sid: d.api_key_sid || '',
         api_key_secret: '',
-      })
+        sip_password: '',
+      }))
       setHasAuthToken(Boolean(d.has_auth_token))
-      setSaveMsg('CONFIGURATION ET CLÉS TWILIO SAUVEGARDÉES ET GÉNÉRÉES AUTOMATIQUEMENT !')
+      setSaveMsg(`CONFIGURATION ${providerType.toUpperCase()} SAUVEGARDÉE AVEC SUCCÈS !`)
       setConfigStatus('configured')
       setTimeout(() => setSaveMsg(''), 5000)
     } catch (err) {
@@ -116,20 +129,34 @@ export default function Settings() {
     setTestResult(null)
     try {
       const res = await api.get('/api/twilio/test/')
-      setTestResult({ success: true, message: res.data?.message || 'Connexion à Twilio réussie !' })
+      setTestResult({ success: true, message: res.data?.message || 'Connexion réussie !' })
     } catch (err) {
-      setTestResult({ success: false, message: err.response?.data?.message || err.response?.data?.detail || 'Échec de connexion à Twilio' })
+      setTestResult({ success: false, message: err.response?.data?.message || err.response?.data?.detail || 'Échec de connexion' })
     } finally {
       setTesting(false)
     }
   }
 
   const handleReset = async () => {
-    if (!window.confirm('CONFIRMER : Supprimer toute la configuration Twilio ?')) return
+    if (!window.confirm('CONFIRMER : Supprimer toute la configuration téléphonique ?')) return
     setResetting(true)
     try {
       await api.delete('/api/twilio/config/')
-      setConfig({ account_sid: '', auth_token: '', phone_number: '', caller_id_name: '', twiml_app_sid: '', api_key_sid: '', api_key_secret: '' })
+      setConfig({
+        provider_type: 'twilio',
+        account_sid: '',
+        auth_token: '',
+        phone_number: '',
+        caller_id_name: '',
+        twiml_app_sid: '',
+        api_key_sid: '',
+        api_key_secret: '',
+        sip_ws_url: '',
+        sip_username: '',
+        sip_password: '',
+        sip_domain: '',
+        sip_outbound_proxy: '',
+      })
       setConfigStatus('not_configured')
       setHasAuthToken(false)
       setShowDanger(false)
@@ -146,7 +173,7 @@ export default function Settings() {
       <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
         <div className="terminal-header mb-1">Admin // Infrastructure</div>
         <h1 className="text-xl font-mono font-bold" style={{ color: '#00ff66', textShadow: '0 0 10px #00ff66' }}>
-          CONFIGURATION SIMPLIFIÉE TWILIO
+          CONFIGURATION TÉLÉPHONIQUE MULTI-FOURNISSEURS
         </h1>
       </motion.div>
 
@@ -173,184 +200,294 @@ export default function Settings() {
         <div>
           <div className="text-sm font-mono font-bold"
             style={{ color: configStatus === 'configured' ? '#00ff66' : '#ff2244' }}>
-            TWILIO : {configStatus === 'configured' ? 'OPÉRATIONNEL (EN LIGNE)' : 'NON CONFIGURÉ'}
+            STATUT MOTEUR ({providerType.toUpperCase()}) : {configStatus === 'configured' ? 'OPÉRATIONNEL (EN LIGNE)' : 'NON CONFIGURÉ'}
           </div>
           <div className="text-text-muted text-xs font-mono" style={{ fontSize: '0.65rem' }}>
-            {configStatus === 'configured' ? 'Remplissez uniquement les 3 champs ci-dessous. Les clés Web Voice SDK sont générées automatiquement !' : 'Entrez vos 3 identifiants Twilio de votre tableau de bord principal.'}
+            {configStatus === 'configured' ? 'Système prêt à passer et recevoir des appels vocaux.' : 'Choisissez votre fournisseur ci-dessous et saisissez vos accès.'}
           </div>
         </div>
       </motion.div>
 
-      {/* Auto-provision Banner */}
-      <div className="p-4 rounded-sm font-mono text-xs border border-neon-green/30 bg-neon-green/5 text-neon-green flex items-start gap-3">
-        <span className="text-base">⚡</span>
-        <div>
-          <div className="font-bold mb-1">AUTOMATISATION COMPLÈTE TWILIO VOICE SDK</div>
-          <div className="text-text-muted" style={{ fontSize: '0.65rem' }}>
-            Vous avez seulement besoin d'entrer vos <strong>3 identifiants de base</strong> présent sur votre écran d'accueil Twilio.
-            Notre système crée et configure automatiquement les clés <strong>API Key (SK...)</strong> et <strong>Application TwiML (AP...)</strong> requises pour passer des appels depuis le navigateur !
-          </div>
-        </div>
+      {/* Provider Selector Tabs */}
+      <div className="flex gap-2 bg-black/60 p-1.5 rounded card-cyber border border-white/10">
+        <button
+          type="button"
+          onClick={() => {
+            setProviderType('twilio')
+            setConfig((p) => ({ ...p, provider_type: 'twilio' }))
+          }}
+          className={`flex-1 py-3 text-xs font-mono font-bold rounded-sm transition-all flex items-center justify-center gap-2 ${
+            providerType === 'twilio'
+              ? 'bg-neon-green/20 text-neon-green border border-neon-green/50 shadow-[0_0_12px_rgba(0,255,102,0.2)]'
+              : 'text-text-muted hover:text-white'
+          }`}
+        >
+          <span>📞 TWILIO NATIVE VOICE SDK</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setProviderType('asterisk')
+            setConfig((p) => ({ ...p, provider_type: 'asterisk' }))
+          }}
+          className={`flex-1 py-3 text-xs font-mono font-bold rounded-sm transition-all flex items-center justify-center gap-2 ${
+            providerType === 'asterisk'
+              ? 'bg-neon-cyan/20 text-neon-cyan border border-neon-cyan/50 shadow-[0_0_12px_rgba(0,212,255,0.2)]'
+              : 'text-text-muted hover:text-white'
+          }`}
+        >
+          <span>🖥️ ASTERISK / VOIPGATE / SIPPORTAL</span>
+        </button>
       </div>
 
       {/* Twilio Config Form */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        className="card-cyber rounded p-6"
-      >
-        <div className="flex items-center gap-3 mb-5">
-          <div className="w-px h-8 bg-neon-green" style={{ boxShadow: '0 0 6px #00ff66' }} />
-          <div>
-            <div className="terminal-header mb-0.5">Fournisseur Téléphonique</div>
-            <h2 className="text-text-terminal font-mono font-bold">IDENTIFIANTS REQUIS (3 SEULS CHAMPS)</h2>
+      {providerType === 'twilio' && (
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="card-cyber rounded p-6"
+        >
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-px h-8 bg-neon-green" style={{ boxShadow: '0 0 6px #00ff66' }} />
+            <div>
+              <div className="terminal-header mb-0.5">Moteur Téléphonique</div>
+              <h2 className="text-text-terminal font-mono font-bold">CONFIGURATION TWILIO VOICE</h2>
+            </div>
           </div>
-        </div>
 
-        <form onSubmit={handleSave} className="space-y-5">
-          <ConfigField
-            label="1. ACCOUNT SID (Commence par AC...)"
-            required
-            value={config.account_sid}
-            onChange={(v) => {
-              const val = v.trim()
-              if (val.startsWith('SK')) {
-                setConfig((p) => ({ ...p, api_key_sid: val }))
-              } else if (val.startsWith('AP')) {
-                setConfig((p) => ({ ...p, twiml_app_sid: val }))
-              } else {
-                setConfig((p) => ({ ...p, account_sid: v }))
-              }
-            }}
-            placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-            hint="Situé sur la page d'accueil principale de votre Console Twilio (Doit commencer par AC)"
-          />
-          <ConfigField
-            label={hasAuthToken ? "2. AUTH TOKEN (🔒 Sauvegardé & Encrypté)" : "2. AUTH TOKEN (Clé secrète à 32 caractères)"}
-            required
-            value={config.auth_token}
-            onChange={(v) => setConfig((p) => ({ ...p, auth_token: v }))}
-            placeholder={hasAuthToken ? "✓ Token sauvegardé — Laissez vide pour le conserver" : "Collez votre Auth Token Twilio ici"}
-            masked
-            hint={hasAuthToken ? "✓ Votre Auth Token est sécurisé en base de données. Laissez ce champ vide sauf modification." : "Situé juste sous l'Account SID sur la Console Twilio (32 caractères hexadécimaux)"}
-          />
-          <ConfigField
-            label="3. NUMÉRO DE TÉLÉPHONE TWILIO"
-            required
-            value={config.phone_number}
-            onChange={(v) => setConfig((p) => ({ ...p, phone_number: v }))}
-            placeholder="+19286688247"
-            hint="Votre numéro d'appel sortant acheté sur Twilio au format international e.g. +19286688247"
-          />
+          <form onSubmit={handleSave} className="space-y-5">
+            <ConfigField
+              label="1. ACCOUNT SID (Commence par AC...)"
+              required
+              value={config.account_sid}
+              onChange={(v) => {
+                const val = v.trim()
+                if (val.startsWith('SK')) {
+                  setConfig((p) => ({ ...p, api_key_sid: val }))
+                } else if (val.startsWith('AP')) {
+                  setConfig((p) => ({ ...p, twiml_app_sid: val }))
+                } else {
+                  setConfig((p) => ({ ...p, account_sid: v }))
+                }
+              }}
+              placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              hint="Situé sur la page d'accueil principale de votre Console Twilio (Doit commencer par AC)"
+            />
+            <ConfigField
+              label={hasAuthToken ? "2. AUTH TOKEN (🔒 Sauvegardé & Encrypté)" : "2. AUTH TOKEN (Clé secrète à 32 caractères)"}
+              required
+              value={config.auth_token}
+              onChange={(v) => setConfig((p) => ({ ...p, auth_token: v }))}
+              placeholder={hasAuthToken ? "✓ Token sauvegardé — Laissez vide pour le conserver" : "Collez votre Auth Token Twilio ici"}
+              masked
+              hint={hasAuthToken ? "✓ Votre Auth Token est sécurisé en base de données. Laissez ce champ vide sauf modification." : "Situé juste sous l'Account SID sur la Console Twilio (32 caractères hexadécimaux)"}
+            />
+            <ConfigField
+              label="3. NUMÉRO DE TÉLÉPHONE TWILIO"
+              required
+              value={config.phone_number}
+              onChange={(v) => setConfig((p) => ({ ...p, phone_number: v }))}
+              placeholder="+19286688247"
+              hint="Votre numéro d'appel sortant acheté sur Twilio au format international e.g. +19286688247"
+            />
 
-          {/* Advanced / Auto-generated Accordion */}
-          <div className="pt-2">
-            <button
-              type="button"
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className="text-xs font-mono text-text-muted hover:text-neon-green flex items-center gap-2 py-1 transition-colors"
-            >
-              <span>{showAdvanced ? '▲ MASQUER' : '▼ AFFICHER'} PARAMÈTRES AVANCÉS (GÉNÉRÉS AUTOMATIQUEMENT)</span>
-              {config.api_key_sid && <span className="text-neon-green text-[0.6rem]">[SK CONFIGURÉ]</span>}
-            </button>
+            {/* Advanced / Auto-generated Accordion */}
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="text-xs font-mono text-text-muted hover:text-neon-green flex items-center gap-2 py-1 transition-colors"
+              >
+                <span>{showAdvanced ? '▲ MASQUER' : '▼ AFFICHER'} PARAMÈTRES AVANCÉS (GÉNÉRÉS AUTOMATIQUEMENT)</span>
+                {config.api_key_sid && <span className="text-neon-green text-[0.6rem]">[SK CONFIGURÉ]</span>}
+              </button>
 
+              <AnimatePresence>
+                {showAdvanced && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="mt-3 p-4 rounded bg-black/40 border border-white/10 space-y-4"
+                  >
+                    <ConfigField
+                      label="TWIML APP SID (AP...)"
+                      value={config.twiml_app_sid}
+                      onChange={(v) => setConfig((p) => ({ ...p, twiml_app_sid: v }))}
+                      placeholder="Auto-généré : APxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    />
+                    <ConfigField
+                      label="API KEY SID (SK...)"
+                      value={config.api_key_sid}
+                      onChange={(v) => setConfig((p) => ({ ...p, api_key_sid: v }))}
+                      placeholder="Auto-généré : SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    />
+                    <ConfigField
+                      label="API KEY SECRET"
+                      value={config.api_key_secret}
+                      onChange={(v) => setConfig((p) => ({ ...p, api_key_secret: v }))}
+                      placeholder="Auto-généré lors de la création de la clé"
+                      masked
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Feedback */}
             <AnimatePresence>
-              {showAdvanced && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="mt-3 p-4 rounded bg-black/40 border border-white/10 space-y-4"
-                >
-                  <div className="text-[0.7rem] font-mono text-neon-green mb-2">
-                    ✓ Ces paramètres sont générés automatiquement par notre backend dès que vous enregistrez vos 3 identifiants ci-dessus ! Vous n'avez pas besoin d'y toucher.
-                  </div>
-                  <ConfigField
-                    label="TWIML APP SID (AP...)"
-                    value={config.twiml_app_sid}
-                    onChange={(v) => setConfig((p) => ({ ...p, twiml_app_sid: v }))}
-                    placeholder="Auto-généré : APxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                    hint="Application TwiML configurée pour router les appels vocaux du navigateur"
-                  />
-                  <ConfigField
-                    label="API KEY SID (SK...)"
-                    value={config.api_key_sid}
-                    onChange={(v) => setConfig((p) => ({ ...p, api_key_sid: v }))}
-                    placeholder="Auto-généré : SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                    hint="Clé API pour la signature sécurisée des jetons Web Voice SDK"
-                  />
-                  <ConfigField
-                    label="API KEY SECRET"
-                    value={config.api_key_secret}
-                    onChange={(v) => setConfig((p) => ({ ...p, api_key_secret: v }))}
-                    placeholder="Auto-généré lors de la création de la clé"
-                    masked
-                    hint="Secret associé à la clé API Twilio"
-                  />
+              {saveMsg && (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  className="text-neon-green text-xs font-mono p-3 rounded-sm"
+                  style={{ background: 'rgba(0,255,102,0.1)', border: '1px solid rgba(0,255,102,0.3)' }}>
+                  ✓ {saveMsg}
+                </motion.div>
+              )}
+              {saveError && (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  className="text-neon-danger text-xs font-mono p-3 rounded-sm"
+                  style={{ background: 'rgba(255,34,68,0.1)', border: '1px solid rgba(255,34,68,0.3)' }}>
+                  ⛔ {saveError}
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {/* Actions */}
+            <div className="flex gap-3 pt-2">
+              <button
+                type="submit"
+                disabled={saving}
+                className="btn-cyber flex-1 py-3 text-sm font-bold rounded-sm"
+              >
+                {saving ? '⟳ SAUVEGARDE ET GÉNÉRATION AUTOMATIQUE...' : '▶ ENREGISTRER CONFIGURATION TWILIO'}
+              </button>
+              <button
+                type="button"
+                onClick={handleTest}
+                disabled={testing || configStatus !== 'configured'}
+                className="btn-cyber px-6 py-3 text-sm rounded-sm"
+                style={{ borderColor: '#00d4ff', color: '#00d4ff', opacity: configStatus !== 'configured' ? 0.4 : 1 }}
+              >
+                {testing ? '⟳' : '⚡ TESTER CONNEXION'}
+              </button>
+            </div>
+          </form>
+        </motion.div>
+      )}
+
+      {/* Asterisk / SIP Config Form */}
+      {providerType === 'asterisk' && (
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="card-cyber rounded p-6 border border-neon-cyan/40"
+        >
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-px h-8 bg-neon-cyan" style={{ boxShadow: '0 0 6px #00d4ff' }} />
+            <div>
+              <div className="terminal-header mb-0.5">Moteur Téléphonique SIP / WebRTC</div>
+              <h2 className="text-neon-cyan font-mono font-bold">CONFIGURATION ASTERISK, VOIPGATE & SIPPORTAL</h2>
+            </div>
           </div>
 
-          {/* Feedback */}
-          <AnimatePresence>
-            {saveMsg && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                className="text-neon-green text-xs font-mono p-3 rounded-sm"
-                style={{ background: 'rgba(0,255,102,0.1)', border: '1px solid rgba(0,255,102,0.3)' }}>
-                ✓ {saveMsg}
-              </motion.div>
-            )}
-            {saveError && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                className="text-neon-danger text-xs font-mono p-3 rounded-sm"
-                style={{ background: 'rgba(255,34,68,0.1)', border: '1px solid rgba(255,34,68,0.3)' }}>
-                ⛔ {saveError}
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <form onSubmit={handleSave} className="space-y-5">
+            <ConfigField
+              label="1. WEBSOCKET URL (wss://...)"
+              required
+              value={config.sip_ws_url}
+              onChange={(v) => setConfig((p) => ({ ...p, sip_ws_url: v }))}
+              placeholder="wss://asterisk.votre-domaine.com:8089/ws"
+              hint="URL WebSocket de votre serveur Asterisk PJSIP, VoIPGate ou SipPortal (doit commencer par wss://)"
+            />
+            <ConfigField
+              label="2. NOM D'UTILISATEUR / EXTENSION SIP"
+              required
+              value={config.sip_username}
+              onChange={(v) => setConfig((p) => ({ ...p, sip_username: v }))}
+              placeholder="1001 ou agent1"
+              hint="Votre compte ou numéro d'extension d'agent SIP"
+            />
+            <ConfigField
+              label="3. MOT DE PASSE SIP / SECRET"
+              required
+              value={config.sip_password}
+              onChange={(v) => setConfig((p) => ({ ...p, sip_password: v }))}
+              placeholder="Mot de passe secret SIP"
+              masked
+              hint="Mot de passe d'authentification SIP défini sur Asterisk ou votre provider"
+            />
+            <ConfigField
+              label="4. DOMAINE SIP / REALM"
+              value={config.sip_domain}
+              onChange={(v) => setConfig((p) => ({ ...p, sip_domain: v }))}
+              placeholder="asterisk.local ou sip.voipgate.com"
+              hint="Domaine ou Realm SIP de votre serveur"
+            />
+            <ConfigField
+              label="5. NUMÉRO D'APPEL SORTANT (CALLER ID)"
+              value={config.phone_number}
+              onChange={(v) => setConfig((p) => ({ ...p, phone_number: v }))}
+              placeholder="+19286688247"
+              hint="Numéro d'affichage de l'appelant au format international e.g. +19286688247"
+            />
 
-          {/* Actions */}
-          <div className="flex gap-3 pt-2">
-            <button
-              type="submit"
-              disabled={saving}
-              className="btn-cyber flex-1 py-3 text-sm font-bold rounded-sm"
-            >
-              {saving ? '⟳ SAUVEGARDE ET GÉNÉRATION AUTOMATIQUE...' : '▶ ENREGISTRER (SAUVEGARDER & PROVISIONNER)'}
-            </button>
-            <button
-              type="button"
-              onClick={handleTest}
-              disabled={testing || configStatus !== 'configured'}
-              className="btn-cyber px-6 py-3 text-sm rounded-sm"
-              style={{ borderColor: '#00d4ff', color: '#00d4ff', opacity: configStatus !== 'configured' ? 0.4 : 1 }}
-            >
-              {testing ? '⟳' : '⚡ TESTER CONNEXION'}
-            </button>
-          </div>
-        </form>
+            {/* Feedback */}
+            <AnimatePresence>
+              {saveMsg && (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  className="text-neon-cyan text-xs font-mono p-3 rounded-sm bg-neon-cyan/10 border border-neon-cyan/30">
+                  ✓ {saveMsg}
+                </motion.div>
+              )}
+              {saveError && (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  className="text-neon-danger text-xs font-mono p-3 rounded-sm bg-neon-danger/10 border border-neon-danger/30">
+                  ⛔ {saveError}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-        {/* Test result */}
-        <AnimatePresence>
-          {testResult && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className="mt-3 p-3 rounded-sm text-xs font-mono"
-              style={{
-                background: testResult.success ? 'rgba(0,255,102,0.08)' : 'rgba(255,34,68,0.08)',
-                border: `1px solid ${testResult.success ? 'rgba(0,255,102,0.3)' : 'rgba(255,34,68,0.3)'}`,
-                color: testResult.success ? '#00ff66' : '#ff2244',
-              }}
-            >
-              {testResult.success ? '✓ ' : '⛔ '} {testResult.message}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </motion.div>
+            {/* Actions */}
+            <div className="flex gap-3 pt-2">
+              <button
+                type="submit"
+                disabled={saving}
+                className="btn-cyber flex-1 py-3 text-sm font-bold rounded-sm border-neon-cyan text-neon-cyan hover:bg-neon-cyan/10"
+              >
+                {saving ? '⟳ SAUVEGARDE EN COURS...' : '▶ ENREGISTRER CONFIGURATION ASTERISK / SIP'}
+              </button>
+              <button
+                type="button"
+                onClick={handleTest}
+                disabled={testing}
+                className="btn-cyber px-6 py-3 text-sm rounded-sm"
+                style={{ borderColor: '#00d4ff', color: '#00d4ff' }}
+              >
+                {testing ? '⟳' : '⚡ TESTER SIP'}
+              </button>
+            </div>
+          </form>
+        </motion.div>
+      )}
+
+      {/* Test result */}
+      <AnimatePresence>
+        {testResult && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="p-3 rounded-sm text-xs font-mono"
+            style={{
+              background: testResult.success ? 'rgba(0,255,102,0.08)' : 'rgba(255,34,68,0.08)',
+              border: `1px solid ${testResult.success ? 'rgba(0,255,102,0.3)' : 'rgba(255,34,68,0.3)'}`,
+              color: testResult.success ? '#00ff66' : '#ff2244',
+            }}
+          >
+            {testResult.success ? '✓ ' : '⛔ '} {testResult.message}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Danger Zone */}
       <motion.div
@@ -384,9 +521,9 @@ export default function Settings() {
               className="mt-4 p-4 rounded-sm"
               style={{ background: 'rgba(255,34,68,0.05)', border: '1px solid rgba(255,34,68,0.2)' }}
             >
-              <div className="text-text-terminal font-mono text-sm font-bold mb-2">Réinitialiser la configuration Twilio</div>
+              <div className="text-text-terminal font-mono text-sm font-bold mb-2">Réinitialiser la configuration Téléphonique</div>
               <div className="text-text-muted text-xs font-mono mb-4">
-                Ceci supprimera définitivement tous les identifiants Twilio stockés. Les appels seront désactivés immédiatement.
+                Ceci supprimera définitivement tous les identifiants téléphoniques stockés (Twilio et Asterisk).
               </div>
               <button
                 onClick={handleReset}

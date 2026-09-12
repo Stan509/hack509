@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { useDialer } from '../contexts/DialerContext.jsx'
-import useTwilio from '../hooks/useTwilio.js'
+import useTelephony from '../hooks/useTelephony.js'
 import EmbeddedBrowserModal from './EmbeddedBrowserModal.jsx'
 
 function VUBars({ active }) {
+
   const numBars = 8
   return (
     <div className="flex items-end gap-1 h-8">
@@ -43,7 +44,7 @@ const STATUS_DISPLAY = {
 
 export default function CallControls() {
   const { currentContact, callStatus, callTimer, formatTimer, dialNext, hangUp, queue, autoDial, setAutoDial, toggleFavoriteContact, ringTimeout, setRingTimeout, ringTimer, ringTimeoutActive } = useDialer()
-  const { makeCall, hangup, hold, mute, isMuted, isOnHold, isReady, simulationMode, error } = useTwilio()
+  const { makeCall, hangup, hold, mute, isMuted, isOnHold, isReady, simulationMode, error, providerType } = useTelephony()
 
   const [browserOpen, setBrowserOpen] = useState(false)
 
@@ -327,7 +328,7 @@ export default function CallControls() {
           </motion.button>
         </div>
 
-        {/* Twilio readiness */}
+        {/* Provider readiness */}
         <div className="flex items-center justify-center gap-2 pt-1">
           <span
             className="status-dot"
@@ -337,9 +338,10 @@ export default function CallControls() {
             }}
           />
           <span className="text-xs font-mono text-text-muted" style={{ fontSize: '0.65rem' }}>
-            TWILIO: {isReady ? 'READY' : 'OFFLINE'}
+            ENGINE ({providerType ? providerType.toUpperCase() : 'TWILIO'}): {isReady ? 'READY' : 'OFFLINE'}
           </span>
         </div>
+
       </div>
 
       {/* Embedded Browser Modal */}

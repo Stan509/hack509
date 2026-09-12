@@ -22,6 +22,25 @@ try:
             if 'api_key_secret' not in columns:
                 print("Adding missing column api_key_secret to twilio_config_twilioconfig")
                 cursor.execute("ALTER TABLE twilio_config_twilioconfig ADD COLUMN api_key_secret varchar(200) DEFAULT ''")
+            if 'provider_type' not in columns:
+                print("Adding missing column provider_type to twilio_config_twilioconfig")
+                cursor.execute("ALTER TABLE twilio_config_twilioconfig ADD COLUMN provider_type varchar(20) DEFAULT 'twilio'")
+            if 'sip_ws_url' not in columns:
+                print("Adding missing column sip_ws_url to twilio_config_twilioconfig")
+                cursor.execute("ALTER TABLE twilio_config_twilioconfig ADD COLUMN sip_ws_url varchar(255) DEFAULT ''")
+            if 'sip_username' not in columns:
+                print("Adding missing column sip_username to twilio_config_twilioconfig")
+                cursor.execute("ALTER TABLE twilio_config_twilioconfig ADD COLUMN sip_username varchar(100) DEFAULT ''")
+            if 'sip_password' not in columns:
+                print("Adding missing column sip_password to twilio_config_twilioconfig")
+                cursor.execute("ALTER TABLE twilio_config_twilioconfig ADD COLUMN sip_password varchar(200) DEFAULT ''")
+            if 'sip_domain' not in columns:
+                print("Adding missing column sip_domain to twilio_config_twilioconfig")
+                cursor.execute("ALTER TABLE twilio_config_twilioconfig ADD COLUMN sip_domain varchar(200) DEFAULT ''")
+            if 'sip_outbound_proxy' not in columns:
+                print("Adding missing column sip_outbound_proxy to twilio_config_twilioconfig")
+                cursor.execute("ALTER TABLE twilio_config_twilioconfig ADD COLUMN sip_outbound_proxy varchar(200) DEFAULT ''")
+
 except Exception as e:
     print(f"Defensive schema check warning: {e}")
 
