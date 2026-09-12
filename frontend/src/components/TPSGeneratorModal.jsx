@@ -108,6 +108,10 @@ export default function TPSGeneratorModal({ isOpen, onClose, initialPhone = '', 
   const handleSaveContact = async (leadIndex, lead) => {
     setSavingId(leadIndex)
     try {
+      const relativesText = Array.isArray(lead.relatives)
+        ? lead.relatives.join(', ')
+        : (typeof lead.relatives === 'string' ? lead.relatives : 'N/A')
+
       const newContact = {
         first_name: lead.first_name || 'Contact',
         last_name: lead.last_name || 'TPS/FPS',
@@ -115,7 +119,7 @@ export default function TPSGeneratorModal({ isOpen, onClose, initialPhone = '', 
         address: lead.address || '',
         city: lead.city || '',
         state: lead.state || '',
-        note: `Ajouté depuis ${lead.source || 'TPS/FPS'}. Âge: ${lead.age || 'N/A'}. Proches: ${lead.relatives?.join(', ') || 'N/A'}`
+        note: `Ajouté depuis ${lead.source || 'TPS/FPS'}. Âge: ${lead.age || 'N/A'}. Proches: ${relativesText}`
       }
       
       const res = await api.post('/api/contacts/', newContact)
@@ -405,14 +409,20 @@ export default function TPSGeneratorModal({ isOpen, onClose, initialPhone = '', 
                             </div>
                           </div>
 
-                          {lead.relatives && lead.relatives.length > 0 && (
+                          {lead.relatives && (
                             <div className="text-[0.7rem] font-mono text-text-muted flex flex-wrap items-center gap-1">
                               <span className="text-yellow-400 font-bold">Proches associés:</span>
-                              {lead.relatives.map((rel, rIdx) => (
-                                <span key={rIdx} className="bg-white/5 border border-white/10 px-1.5 py-0.5 rounded text-white/80">
-                                  {rel}
+                              {Array.isArray(lead.relatives) ? (
+                                lead.relatives.map((rel, rIdx) => (
+                                  <span key={rIdx} className="bg-white/5 border border-white/10 px-1.5 py-0.5 rounded text-white/80">
+                                    {rel}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="bg-white/5 border border-white/10 px-1.5 py-0.5 rounded text-white/80">
+                                  {String(lead.relatives)}
                                 </span>
-                              ))}
+                              )}
                             </div>
                           )}
                         </div>

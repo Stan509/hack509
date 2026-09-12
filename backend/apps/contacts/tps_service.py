@@ -149,8 +149,9 @@ def query_truepeoplesearch(search_type, digits, name, location):
                         'phone': c_phone or clean_phone(digits),
                         'address': c_addr,
                         'age': 'N/A',
-                        'relatives': 'Disponible sur TPS',
+                        'relatives': ['Disponible sur TPS'],
                         'source': 'TruePeopleSearch (TPS Direct)',
+                        'direct_link': url,
                         'tps_url': url
                     })
     except Exception as e:
@@ -194,8 +195,9 @@ def query_fastpeoplesearch(search_type, digits, name, location):
                         'phone': c_phone or clean_phone(digits),
                         'address': c_addr,
                         'age': 'N/A',
-                        'relatives': 'Disponible sur FPS',
+                        'relatives': ['Disponible sur FPS'],
                         'source': 'FastPeopleSearch (FPS Direct)',
+                        'direct_link': url,
                         'fps_url': url
                     })
     except Exception as e:
@@ -228,8 +230,9 @@ def generate_candidate_lead(search_type, phone, name, location):
             'phone': formatted_phone,
             'address': location or 'United States',
             'age': '35-50',
-            'relatives': 'Famille & Proches identifiés',
+            'relatives': ['Famille & Proches identifiés'],
             'source': 'Générateur Intelligence TPS / FPS',
+            'direct_link': tps_url,
             'tps_url': tps_url,
             'fps_url': fps_url,
         }
