@@ -6,7 +6,10 @@ import re
 import logging
 import urllib.request
 import urllib.parse
-from bs4 import BeautifulSoup
+try:
+    from bs4 import BeautifulSoup
+except ImportError:
+    BeautifulSoup = None
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +115,8 @@ def bulk_lookup_tps_fps(phones, provider='all'):
 
 def query_truepeoplesearch(search_type, digits, name, location):
     results = []
+    if not BeautifulSoup:
+        return []
     if search_type == 'phone' and digits:
         url = f"https://www.truepeoplesearch.com/results?phoneno={digits}"
     elif search_type == 'name' and name:
@@ -155,6 +160,8 @@ def query_truepeoplesearch(search_type, digits, name, location):
 
 def query_fastpeoplesearch(search_type, digits, name, location):
     results = []
+    if not BeautifulSoup:
+        return []
     if search_type == 'phone' and digits:
         url = f"https://www.fastpeoplesearch.com/phone/{digits}"
     elif search_type == 'name' and name:

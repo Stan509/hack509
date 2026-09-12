@@ -6,3 +6,5 @@ python-decouple==3.8
 twilio==8.10.0
 Pillow==11.1.0
 django-cryptography==1.1
+beautifulsoup4==4.12.3
+
