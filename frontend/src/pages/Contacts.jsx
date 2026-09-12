@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import { useDialer } from '../contexts/DialerContext.jsx'
 import ContactCard from '../components/ContactCard.jsx'
+import EmbeddedBrowserModal from '../components/EmbeddedBrowserModal.jsx'
 
 const STATUS_COLORS = {
   new:          { label: 'NEW',         color: '#3b82f6' },
@@ -315,24 +316,14 @@ function GeneratorPipeline({ onImport, onSaveAndQueue }) {
                     <td className="text-text-muted">{areaCode}</td>
                     <td>
                       <div className="flex items-center gap-1.5">
-                        <a
-                          href={`https://www.truepeoplesearch.com/results?phoneno=${c.phone.replace(/[^0-9]/g, '')}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs font-mono px-1.5 py-0.5 rounded-sm border hover:brightness-125 transition-all"
-                          style={{ borderColor: 'rgba(0,212,255,0.4)', color: '#00d4ff', fontSize: '0.65rem' }}
+                        <button
+                          type="button"
+                          onClick={() => setBrowserTarget({ phone: c.phone, name: `${c.first_name || ''} ${c.last_name || ''}`.trim() })}
+                          className="text-xs font-mono px-2 py-0.5 rounded-sm border border-neon-cyan/50 text-neon-cyan hover:brightness-125 transition-all"
+                          style={{ fontSize: '0.65rem' }}
                         >
-                          ↗ TPS
-                        </a>
-                        <a
-                          href={`https://www.fastpeoplesearch.com/phone/${c.phone.replace(/[^0-9]/g, '')}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs font-mono px-1.5 py-0.5 rounded-sm border hover:brightness-125 transition-all"
-                          style={{ borderColor: 'rgba(255,153,0,0.4)', color: '#ff9900', fontSize: '0.65rem' }}
-                        >
-                          ↗ FPS
-                        </a>
+                          🌐 TPS / FPS
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -399,6 +390,7 @@ export default function Contacts() {
   const [showGenerator, setShowGenerator] = useState(true)
   const [favoriteOnly, setFavoriteOnly] = useState(false)
   const [selectedIds, setSelectedIds] = useState(new Set())
+  const [browserTarget, setBrowserTarget] = useState(null)
   const PAGE_SIZE = 20
 
   const toggleSelectAll = () => {
@@ -728,28 +720,18 @@ export default function Contacts() {
                           </button>
                           {contact.phone && (
                             <>
-                              <a
-                                href={`https://www.truepeoplesearch.com/results?phoneno=${contact.phone.replace(/[^0-9]/g, '')}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                className="text-xs font-mono px-1.5 py-0.5 rounded-sm border hover:brightness-125 transition-all"
-                                style={{ borderColor: 'rgba(0,212,255,0.4)', color: '#00d4ff', fontSize: '0.65rem' }}
-                                title="Open TruePeopleSearch"
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setBrowserTarget({ phone: contact.phone, name: `${contact.first_name || ''} ${contact.last_name || ''}`.trim() })
+                                }}
+                                className="text-xs font-mono px-2 py-0.5 rounded-sm border border-neon-cyan/50 text-neon-cyan hover:brightness-125 transition-all"
+                                style={{ fontSize: '0.65rem' }}
+                                title="Ouvrir le navigateur embarqué TPS / FPS"
                               >
-                                ↗ TPS
-                              </a>
-                              <a
-                                href={`https://www.fastpeoplesearch.com/phone/${contact.phone.replace(/[^0-9]/g, '')}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                className="text-xs font-mono px-1.5 py-0.5 rounded-sm border hover:brightness-125 transition-all"
-                                style={{ borderColor: 'rgba(255,153,0,0.4)', color: '#ff9900', fontSize: '0.65rem' }}
-                                title="Open FastPeopleSearch"
-                              >
-                                ↗ FPS
-                              </a>
+                                🌐 TPS / FPS
+                              </button>
                             </>
                           )}
                         </div>
@@ -817,6 +799,17 @@ export default function Contacts() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Embedded Browser Modal */}
+      {browserTarget && (
+        <EmbeddedBrowserModal
+          isOpen={Boolean(browserTarget)}
+          onClose={() => setBrowserTarget(null)}
+          phone={browserTarget.phone}
+          contactName={browserTarget.name}
+        />
+      )}
     </div>
   )
 }
+

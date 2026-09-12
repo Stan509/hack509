@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { motion } from 'framer-motion'
+import EmbeddedBrowserModal from './EmbeddedBrowserModal.jsx'
 
 const STATUS_CONFIG = {
   new:        { label: 'NEW',         color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' },
@@ -13,6 +15,8 @@ const STATUS_CONFIG = {
 }
 
 export default function ContactCard({ contact, onAddToQueue, onView, compact = false }) {
+  const [browserOpen, setBrowserOpen] = useState(false)
+
   if (!contact) return null
 
   const statusCfg = STATUS_CONFIG[contact.status] || STATUS_CONFIG.default
@@ -48,103 +52,105 @@ export default function ContactCard({ contact, onAddToQueue, onView, compact = f
   }
 
   return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 10 }}
-      className="card-cyber rounded p-4 group cursor-pointer"
-      whileHover={{ y: -2 }}
-    >
-      <div className="flex items-start justify-between gap-3">
-        {/* Avatar */}
-        <div className="w-10 h-10 rounded-sm flex items-center justify-center bg-neon-green bg-opacity-10 text-neon-green font-mono font-bold text-lg flex-shrink-0"
-          style={{ border: '1px solid rgba(0,255,102,0.2)' }}>
-          {(contact.first_name?.[0] || contact.name?.[0] || '?').toUpperCase()}
-        </div>
-
-        {/* Info */}
-        <div className="flex-1 min-w-0">
-          <div className="text-text-terminal font-mono font-semibold text-sm flex items-center gap-1.5">
-            <span>{contact.first_name} {contact.last_name}</span>
-            {contact.is_favorite && <span className="text-yellow-400 text-xs">⭐</span>}
+    <>
+      <motion.div
+        layout
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: 10 }}
+        className="card-cyber rounded p-4 group cursor-pointer"
+        whileHover={{ y: -2 }}
+      >
+        <div className="flex items-start justify-between gap-3">
+          {/* Avatar */}
+          <div className="w-10 h-10 rounded-sm flex items-center justify-center bg-neon-green bg-opacity-10 text-neon-green font-mono font-bold text-lg flex-shrink-0"
+            style={{ border: '1px solid rgba(0,255,102,0.2)' }}>
+            {(contact.first_name?.[0] || contact.name?.[0] || '?').toUpperCase()}
           </div>
-          <div className="text-neon-dim font-mono text-xs mt-0.5">{contact.phone}</div>
-          {contact.address && (
-            <div className="text-text-muted font-mono text-xs mt-0.5 truncate">{contact.address}</div>
-          )}
-        </div>
 
-        {/* Status */}
-        <div className="flex flex-col items-end gap-1 flex-shrink-0">
-          <div
-            className="badge-cyber rounded-sm"
-            style={{ color: statusCfg.color, background: statusCfg.bg, border: `1px solid ${statusCfg.color}44` }}
-          >
-            {statusCfg.label}
+          {/* Info */}
+          <div className="flex-1 min-w-0">
+            <div className="text-text-terminal font-mono font-semibold text-sm flex items-center gap-1.5">
+              <span>{contact.first_name} {contact.last_name}</span>
+              {contact.is_favorite && <span className="text-yellow-400 text-xs">⭐</span>}
+            </div>
+            <div className="text-neon-dim font-mono text-xs mt-0.5">{contact.phone}</div>
+            {contact.address && (
+              <div className="text-text-muted font-mono text-xs mt-0.5 truncate">{contact.address}</div>
+            )}
+          </div>
+
+          {/* Status */}
+          <div className="flex flex-col items-end gap-1 flex-shrink-0">
+            <div
+              className="badge-cyber rounded-sm"
+              style={{ color: statusCfg.color, background: statusCfg.bg, border: `1px solid ${statusCfg.color}44` }}
+            >
+              {statusCfg.label}
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Actions */}
-      {(onAddToQueue || onView) && (
-        <div className="flex gap-2 mt-3 pt-3 border-t border-neon-green border-opacity-10">
-          {onView && (
-            <button
-              onClick={() => onView(contact)}
-              className="btn-cyber flex-1 py-1 text-xs rounded-sm"
-            >
-              VIEW
-            </button>
-          )}
-          {onAddToQueue && (
-            <button
-              onClick={() => onAddToQueue(contact)}
-              className="btn-cyber flex-1 py-1 text-xs rounded-sm"
-              style={{ borderColor: '#00ff66', color: '#00ff66' }}
-            >
-              + QUEUE
-            </button>
-          )}
-        </div>
-      )}
+        {/* Actions */}
+        {(onAddToQueue || onView) && (
+          <div className="flex gap-2 mt-3 pt-3 border-t border-neon-green border-opacity-10">
+            {onView && (
+              <button
+                onClick={() => onView(contact)}
+                className="btn-cyber flex-1 py-1 text-xs rounded-sm"
+              >
+                VIEW
+              </button>
+            )}
+            {onAddToQueue && (
+              <button
+                onClick={() => onAddToQueue(contact)}
+                className="btn-cyber flex-1 py-1 text-xs rounded-sm"
+                style={{ borderColor: '#00ff66', color: '#00ff66' }}
+              >
+                + QUEUE
+              </button>
+            )}
+          </div>
+        )}
 
-      {/* External Lookup Links */}
+        {/* External Lookup Links */}
+        {contact.phone && (
+          <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-neon-green border-opacity-10">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                setBrowserOpen(true)
+              }}
+              className="btn-cyber px-2.5 py-1 rounded-sm flex items-center gap-1 hover:brightness-125 transition-all"
+              style={{ borderColor: '#00d4ff', color: '#00d4ff', fontSize: '0.65rem' }}
+              title="Rechercher avec le navigateur embarqué TPS & FPS"
+            >
+              🌐 RECHERCHE EMBARQUÉE (TPS / FPS)
+            </button>
+          </div>
+        )}
+
+        {/* Source tag */}
+        {contact.source && (
+          <div className="mt-2">
+            <span className="text-text-muted text-xs font-mono" style={{ fontSize: '0.6rem', letterSpacing: '0.1em' }}>
+              SRC: {contact.source.toUpperCase()}
+            </span>
+          </div>
+        )}
+      </motion.div>
+
+      {/* Embedded Browser Modal */}
       {contact.phone && (
-        <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-neon-green border-opacity-10">
-          <a
-            href={`https://www.truepeoplesearch.com/results?phoneno=${contact.phone.replace(/[^0-9]/g, '')}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="btn-cyber px-2 py-1 rounded-sm flex items-center gap-1 hover:brightness-125 transition-all"
-            style={{ borderColor: '#00d4ff', color: '#00d4ff', fontSize: '0.65rem' }}
-            title="Search phone on TruePeopleSearch"
-          >
-            ↗ TruePeopleSearch
-          </a>
-          <a
-            href={`https://www.fastpeoplesearch.com/phone/${contact.phone.replace(/[^0-9]/g, '')}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="btn-cyber px-2 py-1 rounded-sm flex items-center gap-1 hover:brightness-125 transition-all"
-            style={{ borderColor: '#ff9900', color: '#ff9900', fontSize: '0.65rem' }}
-            title="Search phone on FastPeopleSearch"
-          >
-            ↗ FastPeopleSearch
-          </a>
-        </div>
+        <EmbeddedBrowserModal
+          isOpen={browserOpen}
+          onClose={() => setBrowserOpen(false)}
+          phone={contact.phone}
+          contactName={`${contact.first_name || ''} ${contact.last_name || ''}`}
+        />
       )}
-
-      {/* Source tag */}
-      {contact.source && (
-        <div className="mt-2">
-          <span className="text-text-muted text-xs font-mono" style={{ fontSize: '0.6rem', letterSpacing: '0.1em' }}>
-            SRC: {contact.source.toUpperCase()}
-          </span>
-        </div>
-      )}
-    </motion.div>
+    </>
   )
 }

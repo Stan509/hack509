@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { useDialer } from '../contexts/DialerContext.jsx'
 import useTwilio from '../hooks/useTwilio.js'
+import EmbeddedBrowserModal from './EmbeddedBrowserModal.jsx'
 
 function VUBars({ active }) {
   const numBars = 8
@@ -43,6 +44,8 @@ const STATUS_DISPLAY = {
 export default function CallControls() {
   const { currentContact, callStatus, callTimer, formatTimer, dialNext, hangUp, queue, autoDial, setAutoDial, toggleFavoriteContact, ringTimeout, setRingTimeout, ringTimer, ringTimeoutActive } = useDialer()
   const { makeCall, hangup, hold, mute, isMuted, isOnHold, isReady, simulationMode, error } = useTwilio()
+
+  const [browserOpen, setBrowserOpen] = useState(false)
 
   const statusCfg = STATUS_DISPLAY[callStatus] || STATUS_DISPLAY.idle
   const isCallActive = callStatus === 'active' || callStatus === 'holding'
@@ -126,10 +129,11 @@ export default function CallControls() {
           <motion.div
             initial={{ opacity: 0, y: -5 }}
             animate={{ opacity: 1, y: 0 }}
-            className="w-full text-center p-2 mb-3 rounded text-xs font-mono text-neon-danger border border-neon-danger"
+            className="w-full text-center p-2 mb-3 rounded text-xs font-mono text-neon-danger border border-neon-danger flex items-center justify-between"
             style={{ background: 'rgba(255,34,68,0.15)', boxShadow: '0 0 12px rgba(255,34,68,0.3)' }}
           >
-            ⚠️ TWILIO: {error}
+            <span>⚠️ TWILIO: {error}</span>
+            <button onClick={handleHangup} className="text-[0.65rem] underline font-bold hover:text-white">RÉINITIALISER</button>
           </motion.div>
         )}
 
@@ -181,7 +185,7 @@ export default function CallControls() {
             >
               {currentContact.first_name} {currentContact.last_name || currentContact.name}
             </div>
-            <div className="text-text-muted font-mono text-lg tracking-widest mb-2 flex items-center justify-center gap-2">
+            <div className="text-text-muted font-mono text-lg tracking-widest mb-2 flex items-center justify-center gap-2 flex-wrap">
               <span>{currentContact.phone}</span>
               <button
                 onClick={() => toggleFavoriteContact(currentContact)}
@@ -195,6 +199,17 @@ export default function CallControls() {
                 title={currentContact.is_favorite ? "Retirer des favoris" : "Ajouter aux favoris"}
               >
                 {currentContact.is_favorite ? '⭐ FAVORIS' : '☆ AJOUTER FAVORIS'}
+              </button>
+            </div>
+
+            {/* Embedded TPS / FPS Lookup Buttons */}
+            <div className="flex items-center justify-center gap-2 mb-3">
+              <button
+                onClick={() => setBrowserOpen(true)}
+                className="px-2.5 py-1 text-xs font-mono rounded-sm border border-neon-cyan/50 text-neon-cyan bg-neon-cyan/10 hover:bg-neon-cyan/20 transition-all flex items-center gap-1"
+                title="Ouvrir le navigateur embarqué TPS / FPS"
+              >
+                <span>🌐 RECHERCHE TPS / FPS EMBARQUÉE</span>
               </button>
             </div>
 
@@ -267,12 +282,7 @@ export default function CallControls() {
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.97 }}
             onClick={handleHangup}
-            disabled={!isInProgress}
             className="btn-cyber btn-danger py-3 text-sm rounded font-bold"
-            style={{
-              opacity: !isInProgress ? 0.4 : 1,
-              cursor: !isInProgress ? 'not-allowed' : 'pointer',
-            }}
           >
             ☎ HANGUP
           </motion.button>
@@ -331,6 +341,16 @@ export default function CallControls() {
           </span>
         </div>
       </div>
+
+      {/* Embedded Browser Modal */}
+      {currentContact && (
+        <EmbeddedBrowserModal
+          isOpen={browserOpen}
+          onClose={() => setBrowserOpen(false)}
+          phone={currentContact.phone}
+          contactName={`${currentContact.first_name || ''} ${currentContact.last_name || ''}`}
+        />
+      )}
     </div>
   )
 }
