@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import EmbeddedBrowserModal from './EmbeddedBrowserModal.jsx'
+import TPSGeneratorModal from './TPSGeneratorModal.jsx'
 
 const STATUS_CONFIG = {
   new:        { label: 'NEW',         color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' },
@@ -142,13 +142,14 @@ export default function ContactCard({ contact, onAddToQueue, onView, compact = f
         )}
       </motion.div>
 
-      {/* Embedded Browser Modal */}
+      {/* TPS Generator Modal */}
       {contact.phone && (
-        <EmbeddedBrowserModal
+        <TPSGeneratorModal
           isOpen={browserOpen}
           onClose={() => setBrowserOpen(false)}
-          phone={contact.phone}
+          initialPhone={contact.phone}
           contactName={`${contact.first_name || ''} ${contact.last_name || ''}`}
+          onAddToQueue={onAddToQueue}
         />
       )}
     </>

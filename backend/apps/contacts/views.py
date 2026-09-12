@@ -167,3 +167,28 @@ class ContactDetailView(APIView):
             {'message': f'Contact "{contact_name}" deleted successfully.'},
             status=status.HTTP_200_OK,
         )
+
+
+from .tps_service import lookup_tps_fps
+
+class TpsFpsLookupView(APIView):
+    """
+    POST /api/contacts/tps-lookup/
+    Perform multi-criteria TPS & FPS search (Phone, Name, Address) and return lead cards.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        search_type = request.data.get('search_type', 'phone')
+        phone = request.data.get('phone', '')
+        name = request.data.get('name', '')
+        location = request.data.get('location', '')
+        provider = request.data.get('provider', 'all')
+
+        leads = lookup_tps_fps(search_type=search_type, phone=phone, name=name, location=location, provider=provider)
+        return Response({
+            'success': True,
+            'count': len(leads),
+            'results': leads,
+        }, status=status.HTTP_200_OK)
+

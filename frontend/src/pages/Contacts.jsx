@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import { useDialer } from '../contexts/DialerContext.jsx'
 import ContactCard from '../components/ContactCard.jsx'
-import EmbeddedBrowserModal from '../components/EmbeddedBrowserModal.jsx'
+import TPSGeneratorModal from '../components/TPSGeneratorModal.jsx'
 
 const STATUS_COLORS = {
   new:          { label: 'NEW',         color: '#3b82f6' },
@@ -391,6 +391,8 @@ export default function Contacts() {
   const [favoriteOnly, setFavoriteOnly] = useState(false)
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [browserTarget, setBrowserTarget] = useState(null)
+  const [tpsModalOpen, setTpsModalOpen] = useState(false)
+  const [tpsInitialPhone, setTpsInitialPhone] = useState('')
   const PAGE_SIZE = 20
 
   const toggleSelectAll = () => {
@@ -465,6 +467,13 @@ export default function Contacts() {
           </h1>
         </motion.div>
         <div className="flex gap-2">
+          <button
+            onClick={() => { setTpsInitialPhone(''); setTpsModalOpen(true) }}
+            className="btn-cyber px-4 py-2 text-xs rounded-sm font-bold flex items-center gap-1.5"
+            style={{ borderColor: '#00ff66', color: '#00ff66', background: 'rgba(0, 255, 102, 0.12)' }}
+          >
+            <span>⚡ RECHERCHE TPS / FPS</span>
+          </button>
           <button
             onClick={() => { setShowGenerator(!showGenerator); if (!showGenerator) setShowImport(false) }}
             className="btn-cyber px-4 py-2 text-xs rounded-sm font-bold flex items-center gap-1"
@@ -553,36 +562,32 @@ export default function Contacts() {
       {/* Quick Phone Lookup Tool */}
       <div className="card-cyber rounded p-4 flex flex-wrap items-center justify-between gap-4 border border-neon-green border-opacity-20" style={{ background: 'rgba(0, 255, 102, 0.02)' }}>
         <div className="flex items-center gap-3 flex-1 min-w-64">
-          <span className="text-neon-green font-mono text-xs font-bold whitespace-nowrap">🔍 RECHERCHE EN DIRECT:</span>
+          <span className="text-neon-green font-mono text-xs font-bold whitespace-nowrap">⚡ RECHERCHE DANS LE SYSTÈME:</span>
           <input
             type="text"
             value={quickPhone}
             onChange={(e) => setQuickPhone(e.target.value)}
-            placeholder="Entrez un numéro (ex: 3055550199)..."
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && quickPhone.trim()) {
+                setTpsInitialPhone(quickPhone.trim())
+                setTpsModalOpen(true)
+              }
+            }}
+            placeholder="Entrez un numéro ou nom (ex: 3055550199)..."
             className="input-cyber px-3 py-1.5 text-xs rounded-sm flex-1 min-w-48"
           />
         </div>
         <div className="flex items-center gap-2">
-          <a
-            href={quickPhone.trim() ? `https://www.truepeoplesearch.com/results?phoneno=${quickPhone.replace(/[^0-9]/g, '')}` : '#'}
-            target={quickPhone.trim() ? "_blank" : "_self"}
-            rel="noopener noreferrer"
-            className={`btn-cyber px-3 py-1.5 text-xs rounded-sm font-bold flex items-center gap-1 ${!quickPhone.trim() ? 'opacity-40 cursor-not-allowed' : 'hover:brightness-125'}`}
-            style={{ borderColor: '#00d4ff', color: '#00d4ff' }}
-            onClick={(e) => !quickPhone.trim() && e.preventDefault()}
+          <button
+            onClick={() => {
+              setTpsInitialPhone(quickPhone.trim())
+              setTpsModalOpen(true)
+            }}
+            className="btn-cyber px-4 py-1.5 text-xs rounded-sm font-bold flex items-center gap-1.5"
+            style={{ borderColor: '#00ff66', color: '#00ff66' }}
           >
-            ↗ TruePeopleSearch
-          </a>
-          <a
-            href={quickPhone.trim() ? `https://www.fastpeoplesearch.com/phone/${quickPhone.replace(/[^0-9]/g, '')}` : '#'}
-            target={quickPhone.trim() ? "_blank" : "_self"}
-            rel="noopener noreferrer"
-            className={`btn-cyber px-3 py-1.5 text-xs rounded-sm font-bold flex items-center gap-1 ${!quickPhone.trim() ? 'opacity-40 cursor-not-allowed' : 'hover:brightness-125'}`}
-            style={{ borderColor: '#ff9900', color: '#ff9900' }}
-            onClick={(e) => !quickPhone.trim() && e.preventDefault()}
-          >
-            ↗ FastPeopleSearch
-          </a>
+            <span>🔍 LANCER RECHERCHE TPS / FPS (IN-APP)</span>
+          </button>
         </div>
       </div>
 
@@ -800,15 +805,18 @@ export default function Contacts() {
         )}
       </AnimatePresence>
 
-      {/* Embedded Browser Modal */}
-      {browserTarget && (
-        <EmbeddedBrowserModal
-          isOpen={Boolean(browserTarget)}
-          onClose={() => setBrowserTarget(null)}
-          phone={browserTarget.phone}
-          contactName={browserTarget.name}
-        />
-      )}
+      {/* TPS / FPS Generator & Search Modal */}
+      <TPSGeneratorModal
+        isOpen={tpsModalOpen || Boolean(browserTarget)}
+        onClose={() => {
+          setTpsModalOpen(false)
+          setBrowserTarget(null)
+        }}
+        initialPhone={tpsInitialPhone || browserTarget?.phone || ''}
+        contactName={browserTarget?.name || ''}
+        onAddToQueue={(c) => addToQueue(c)}
+        onContactSaved={() => loadContacts()}
+      />
     </div>
   )
 }

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { useDialer } from '../contexts/DialerContext.jsx'
 import useTelephony from '../hooks/useTelephony.js'
-import EmbeddedBrowserModal from './EmbeddedBrowserModal.jsx'
+import TPSGeneratorModal from './TPSGeneratorModal.jsx'
 
 function VUBars({ active }) {
 
@@ -344,12 +344,12 @@ export default function CallControls() {
 
       </div>
 
-      {/* Embedded Browser Modal */}
+      {/* TPS Generator Modal */}
       {currentContact && (
-        <EmbeddedBrowserModal
+        <TPSGeneratorModal
           isOpen={browserOpen}
           onClose={() => setBrowserOpen(false)}
-          phone={currentContact.phone}
+          initialPhone={currentContact.phone}
           contactName={`${currentContact.first_name || ''} ${currentContact.last_name || ''}`}
         />
       )}
