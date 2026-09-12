@@ -175,8 +175,13 @@ function GeneratorPipeline({ onImport, onSaveAndQueue }) {
   const [success, setSuccess] = useState(false)
   const [genError, setGenError] = useState('')
 
+  const [enriching, setEnriching] = useState(false)
+  const [enrichedData, setEnrichedData] = useState(null)
+  const [enrichTab, setEnrichTab] = useState('found') // 'found' | 'not_found' | 'all'
+
   const generateContacts = () => {
     setGenError('')
+    setEnrichedData(null)
     const cleanArea = areaCode.replace(/[^0-9]/g, '') || '305'
     const list = []
     const cleanCC = countryCode.trim() || '+1'
@@ -199,15 +204,45 @@ function GeneratorPipeline({ onImport, onSaveAndQueue }) {
     setGeneratedList(list)
   }
 
-  const handleSaveAll = async () => {
+  const handleBulkTPSLookup = async () => {
     if (generatedList.length === 0) return
+    setEnriching(true)
+    setGenError('')
+    try {
+      const phones = generatedList.map(c => c.phone)
+      const res = await api.post('/api/contacts/tps-lookup/', { phones })
+      if (res.data && res.data.success) {
+        setEnrichedData(res.data)
+      } else {
+        setGenError(res.data?.message || 'Erreur lors de la recherche globale TPS/FPS')
+      }
+    } catch (err) {
+      setGenError(err.response?.data?.message || err.message || 'Erreur de connexion au serveur de recherche')
+    } finally {
+      setEnriching(false)
+    }
+  }
+
+  const handleSaveList = async (targetList) => {
+    if (!targetList || targetList.length === 0) return
     setGenerating(true)
     setGenError('')
     try {
-      await onImport(generatedList)
+      const contactsToSave = targetList.map(item => ({
+        first_name: item.first_name || 'Prospect',
+        last_name: item.last_name || 'Lead',
+        phone: item.phone || item.lookup_phone || '',
+        address: item.address || `Area Code ${areaCode}`,
+        source: item.source || `TPS/FPS_Generator_${areaCode}`,
+        status: 'new',
+        note: item.note || `Recherché via TPS/FPS.`
+      }))
+
+      await onImport(contactsToSave)
       setSuccess(true)
       setTimeout(() => setSuccess(false), 3000)
       setGeneratedList([])
+      setEnrichedData(null)
     } catch (err) {
       setGenError(err.response?.data?.message || err.message || 'Erreur lors de la sauvegarde')
     } finally {
@@ -215,27 +250,42 @@ function GeneratorPipeline({ onImport, onSaveAndQueue }) {
     }
   }
 
-  const handleSaveAndQueue = async () => {
-    if (generatedList.length === 0) return
+  const handleSaveAndQueueList = async (targetList) => {
+    if (!targetList || targetList.length === 0) return
     setGenerating(true)
     setGenError('')
     try {
-      await onImport(generatedList)
-      if (onSaveAndQueue) onSaveAndQueue(generatedList)
+      const contactsToSave = targetList.map(item => ({
+        first_name: item.first_name || 'Prospect',
+        last_name: item.last_name || 'Lead',
+        phone: item.phone || item.lookup_phone || '',
+        address: item.address || `Area Code ${areaCode}`,
+        source: item.source || `TPS/FPS_Generator_${areaCode}`,
+        status: 'new',
+        note: item.note || `Recherché via TPS/FPS.`
+      }))
+
+      await onImport(contactsToSave)
+      if (onSaveAndQueue) onSaveAndQueue(contactsToSave)
       setSuccess(true)
       setTimeout(() => setSuccess(false), 3000)
       setGeneratedList([])
+      setEnrichedData(null)
     } catch (err) {
       setGenError(err.response?.data?.message || err.message || 'Erreur lors de la sauvegarde')
     } finally {
       setGenerating(false)
     }
   }
+
+  const displayedList = enrichedData
+    ? (enrichTab === 'found' ? enrichedData.found : enrichTab === 'not_found' ? enrichedData.not_found : enrichedData.results)
+    : generatedList
 
   return (
     <div className="card-cyber rounded p-5 border border-neon-cyan border-opacity-30 mb-4" style={{ background: 'rgba(0,212,255,0.02)' }}>
-      <div className="terminal-header mb-1">Algorithmic Generator</div>
-      <h3 className="text-neon-cyan text-sm font-mono font-bold mb-4">⚡ GENERATEUR DE CONTACTS PAR INDICATIF</h3>
+      <div className="terminal-header mb-1">Algorithmic Generator & Intelligence</div>
+      <h3 className="text-neon-cyan text-sm font-mono font-bold mb-4">⚡ GENERATEUR DE CONTACTS ET ENRICHISSEMENT TPS / FPS</h3>
 
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4">
         <div>
@@ -281,7 +331,7 @@ function GeneratorPipeline({ onImport, onSaveAndQueue }) {
         </div>
       </div>
 
-      <div className="flex gap-2 mb-4">
+      <div className="flex flex-wrap gap-3 mb-4">
         <button
           onClick={generateContacts}
           className="btn-cyber px-5 py-2 text-xs rounded-sm font-bold"
@@ -289,68 +339,183 @@ function GeneratorPipeline({ onImport, onSaveAndQueue }) {
         >
           ⬡ GENERER PREVIEW ({count})
         </button>
+
+        {generatedList.length > 0 && (
+          <button
+            onClick={handleBulkTPSLookup}
+            disabled={enriching}
+            className="btn-cyber px-5 py-2 text-xs rounded-sm font-bold flex items-center gap-2"
+            style={{ borderColor: '#00ff66', color: '#00ff66', background: 'rgba(0,255,102,0.12)' }}
+          >
+            {enriching ? (
+              <>
+                <span className="w-3.5 h-3.5 border-2 border-neon-green border-t-transparent rounded-full animate-spin" />
+                <span>RECHERCHE EN MASSE TPS / FPS...</span>
+              </>
+            ) : (
+              <>
+                <span>🔍 RECHERCHER ET ENRICHIR TOUTE LA LISTE ({generatedList.length})</span>
+              </>
+            )}
+          </button>
+        )}
       </div>
 
       {generatedList.length > 0 && (
         <div>
-          <div className="text-neon-cyan text-xs font-mono mb-2 flex items-center justify-between">
-            <span>✓ {generatedList.length} CONTACTS GENERES — APERÇU</span>
-          </div>
-          <div className="max-h-56 overflow-y-auto scrollbar-cyber border border-neon-cyan border-opacity-20 rounded-sm mb-3">
+          {/* Header & Tabs if enriched */}
+          {enrichedData ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3 bg-black/60 p-2 rounded border border-white/10">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono font-bold text-white">RÉSULTATS DE LA RECHERCHE TPS / FPS:</span>
+                <button
+                  onClick={() => setEnrichTab('found')}
+                  className={`px-3 py-1 text-xs font-mono font-bold rounded transition-all ${
+                    enrichTab === 'found'
+                      ? 'bg-neon-green/20 text-neon-green border border-neon-green/50'
+                      : 'text-text-muted hover:text-white'
+                  }`}
+                >
+                  🟢 TROUVÉS ({enrichedData.found_count})
+                </button>
+                <button
+                  onClick={() => setEnrichTab('not_found')}
+                  className={`px-3 py-1 text-xs font-mono font-bold rounded transition-all ${
+                    enrichTab === 'not_found'
+                      ? 'bg-red-500/20 text-red-400 border border-red-500/50'
+                      : 'text-text-muted hover:text-white'
+                  }`}
+                >
+                  🔴 AUCUN RÉSULTAT ({enrichedData.not_found_count})
+                </button>
+                <button
+                  onClick={() => setEnrichTab('all')}
+                  className={`px-3 py-1 text-xs font-mono font-bold rounded transition-all ${
+                    enrichTab === 'all'
+                      ? 'bg-neon-cyan/20 text-neon-cyan border border-neon-cyan/50'
+                      : 'text-text-muted hover:text-white'
+                  }`}
+                >
+                  📊 TOUS ({enrichedData.total})
+                </button>
+              </div>
+
+              <div className="text-[0.65rem] font-mono text-neon-green">
+                ✓ Recherche système terminée pour {enrichedData.total} numéros.
+              </div>
+            </div>
+          ) : (
+            <div className="text-neon-cyan text-xs font-mono mb-2 flex items-center justify-between">
+              <span>✓ {generatedList.length} CONTACTS GÉNÉRÉS — APERÇU</span>
+            </div>
+          )}
+
+          {/* Table */}
+          <div className="max-h-60 overflow-y-auto scrollbar-cyber border border-neon-cyan border-opacity-20 rounded-sm mb-3">
             <table className="table-cyber w-full">
               <thead>
                 <tr>
                   <th>#</th>
-                  <th>NOM</th>
-                  <th>NUMERO TELEPHONE</th>
-                  <th>INDICATIF</th>
-                  <th>VERIFICATION DIRECTE</th>
+                  <th>NOM EXTRAIT / STATUT</th>
+                  <th>NUMÉRO TÉLÉPHONE</th>
+                  <th>ADRESSE / SOURCE</th>
+                  <th>ACTION</th>
                 </tr>
               </thead>
               <tbody>
-                {generatedList.map((c, i) => (
-                  <tr key={i}>
-                    <td className="text-text-muted">{i + 1}</td>
-                    <td className="font-bold">{c.first_name} {c.last_name}</td>
-                    <td className="text-neon-dim font-mono">{c.phone}</td>
-                    <td className="text-text-muted">{areaCode}</td>
-                    <td>
-                      <div className="flex items-center gap-1.5">
+                {displayedList.map((c, i) => {
+                  const isFound = c.status === 'FOUND'
+                  const isNotFound = c.status === 'NOT_FOUND'
+
+                  return (
+                    <tr key={i} className={isFound ? 'bg-neon-green/5' : isNotFound ? 'bg-red-500/5' : ''}>
+                      <td className="text-text-muted">{i + 1}</td>
+                      <td className="font-bold font-mono">
+                        <div className="flex items-center gap-2">
+                          <span>{c.first_name} {c.last_name}</span>
+                          {isFound && (
+                            <span className="bg-neon-green/20 text-neon-green text-[0.6rem] px-1.5 py-0.5 rounded border border-neon-green/40">
+                              PROSPECT TPS/FPS
+                            </span>
+                          )}
+                          {isNotFound && (
+                            <span className="bg-red-500/20 text-red-400 text-[0.6rem] px-1.5 py-0.5 rounded border border-red-500/40">
+                              NON TROUVÉ
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="text-neon-dim font-mono">{c.phone || c.lookup_phone}</td>
+                      <td className="text-text-muted text-xs truncate max-w-xs">{c.address || c.source || '--'}</td>
+                      <td>
                         <button
                           type="button"
-                          onClick={() => setBrowserTarget({ phone: c.phone, name: `${c.first_name || ''} ${c.last_name || ''}`.trim() })}
+                          onClick={() => setBrowserTarget({ phone: c.phone || c.lookup_phone, name: `${c.first_name || ''} ${c.last_name || ''}`.trim() })}
                           className="text-xs font-mono px-2 py-0.5 rounded-sm border border-neon-cyan/50 text-neon-cyan hover:brightness-125 transition-all"
                           style={{ fontSize: '0.65rem' }}
                         >
                           🌐 TPS / FPS
                         </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
 
+          {/* Action buttons */}
           <div className="flex flex-wrap gap-2">
+            {enrichedData ? (
+              <>
+                <button
+                  onClick={() => handleSaveList(enrichedData.found)}
+                  disabled={generating || enrichedData.found_count === 0}
+                  className="btn-cyber flex-1 py-2 text-xs rounded-sm font-bold"
+                  style={{ borderColor: '#00ff66', color: '#00ff66', background: 'rgba(0,255,102,0.12)' }}
+                >
+                  {generating ? '⟳ ENREGISTREMENT...' : `+ ENREGISTRER SEULEMENT LES TROUVÉS (${enrichedData.found_count})`}
+                </button>
+                <button
+                  onClick={() => handleSaveList(enrichedData.results)}
+                  disabled={generating}
+                  className="btn-cyber flex-1 py-2 text-xs rounded-sm font-bold"
+                  style={{ borderColor: '#00d4ff', color: '#00d4ff' }}
+                >
+                  {generating ? '⟳ ENREGISTREMENT...' : `💾 TOUT ENREGISTRER EN 1-CLICK (${enrichedData.total})`}
+                </button>
+                <button
+                  onClick={() => handleSaveAndQueueList(enrichedData.results)}
+                  disabled={generating}
+                  className="btn-cyber flex-1 py-2 text-xs rounded-sm font-bold"
+                  style={{ borderColor: '#ff9900', color: '#ff9900', background: 'rgba(255,153,0,0.12)' }}
+                >
+                  {generating ? '⟳ ENREGISTREMENT...' : `📞 TOUT ENVOYER AU DIALER (${enrichedData.total})`}
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => handleSaveList(generatedList)}
+                  disabled={generating}
+                  className="btn-cyber flex-1 py-2 text-xs rounded-sm font-bold"
+                  style={{ borderColor: '#00ff66', color: '#00ff66' }}
+                >
+                  {generating ? '⟳ ENREGISTREMENT...' : `💾 ENREGISTRER DB (${generatedList.length})`}
+                </button>
+                <button
+                  onClick={() => handleSaveAndQueueList(generatedList)}
+                  disabled={generating}
+                  className="btn-cyber flex-1 py-2 text-xs rounded-sm font-bold"
+                  style={{ borderColor: '#00d4ff', color: '#00d4ff', background: 'rgba(0,212,255,0.1)' }}
+                >
+                  {generating ? '⟳ ENREGISTREMENT...' : `⚡ ENREGISTRER & ENVOYER AU DIALER (${generatedList.length})`}
+                </button>
+              </>
+            )}
+
             <button
-              onClick={handleSaveAll}
-              disabled={generating}
-              className="btn-cyber flex-1 py-2 text-xs rounded-sm font-bold"
-              style={{ borderColor: '#00ff66', color: '#00ff66' }}
-            >
-              {generating ? '⟳ ENREGISTREMENT...' : `💾 ENREGISTRER DB (${generatedList.length})`}
-            </button>
-            <button
-              onClick={handleSaveAndQueue}
-              disabled={generating}
-              className="btn-cyber flex-1 py-2 text-xs rounded-sm font-bold"
-              style={{ borderColor: '#00d4ff', color: '#00d4ff', background: 'rgba(0,212,255,0.1)' }}
-            >
-              {generating ? '⟳ ENREGISTREMENT...' : `⚡ ENREGISTRER & ENVOYER AU DIALER (${generatedList.length})`}
-            </button>
-            <button
-              onClick={() => setGeneratedList([])}
+              onClick={() => { setGeneratedList([]); setEnrichedData(null) }}
               className="btn-cyber btn-danger px-4 py-2 text-xs rounded-sm"
             >
               ✕ ANNULER

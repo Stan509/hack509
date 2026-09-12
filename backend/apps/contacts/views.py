@@ -169,21 +169,45 @@ class ContactDetailView(APIView):
         )
 
 
-from .tps_service import lookup_tps_fps
+from .tps_service import lookup_tps_fps, bulk_lookup_tps_fps
 
 class TpsFpsLookupView(APIView):
     """
     POST /api/contacts/tps-lookup/
-    Perform multi-criteria TPS & FPS search (Phone, Name, Address) and return lead cards.
+    Perform single or batch TPS & FPS search (Phone, Name, Address) and return structured lead lists.
     """
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        search_type = request.data.get('search_type', 'phone')
-        phone = request.data.get('phone', '')
-        name = request.data.get('name', '')
-        location = request.data.get('location', '')
-        provider = request.data.get('provider', 'all')
+        data = request.data or {}
+        query_obj = data.get('query') if isinstance(data.get('query'), dict) else {}
+
+        provider = data.get('provider', 'all')
+        search_type = data.get('search_type', 'phone')
+
+        # 1. Bulk Phone Lookup Mode
+        phones = data.get('phones') or query_obj.get('phones')
+        if isinstance(phones, list) and len(phones) > 0:
+            res = bulk_lookup_tps_fps(phones, provider=provider)
+            res['success'] = True
+            return Response(res, status=status.HTTP_200_OK)
+
+        # 2. Single Criteria Search Mode (Extract fields from root or nested query object)
+        phone = data.get('phone') or query_obj.get('phone') or ''
+        first_name = data.get('first_name') or query_obj.get('first_name') or ''
+        last_name = data.get('last_name') or query_obj.get('last_name') or ''
+        street = data.get('street') or query_obj.get('street') or ''
+        city_state = data.get('city_state') or query_obj.get('city_state') or data.get('location') or query_obj.get('location') or ''
+
+        # Combine name or address if provided
+        name = data.get('name') or f"{first_name} {last_name}".strip()
+        location = street + (f", {city_state}" if city_state and street else city_state)
+
+        # If phone field contains letters (e.g. "georges"), use it as name
+        if phone and not any(c.isdigit() for c in phone) and not name:
+            name = phone
+            phone = ''
+            search_type = 'name'
 
         leads = lookup_tps_fps(search_type=search_type, phone=phone, name=name, location=location, provider=provider)
         return Response({

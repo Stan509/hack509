@@ -44,7 +44,7 @@ const STATUS_DISPLAY = {
 
 export default function CallControls() {
   const { currentContact, callStatus, callTimer, formatTimer, dialNext, hangUp, queue, autoDial, setAutoDial, toggleFavoriteContact, ringTimeout, setRingTimeout, ringTimer, ringTimeoutActive } = useDialer()
-  const { makeCall, hangup, hold, mute, isMuted, isOnHold, isReady, simulationMode, error, providerType } = useTelephony()
+  const { makeCall, hangup, hold, mute, isMuted, isOnHold, isReady, simulationMode, error, providerType, switchProvider } = useTelephony()
 
   const [browserOpen, setBrowserOpen] = useState(false)
 
@@ -328,18 +328,35 @@ export default function CallControls() {
           </motion.button>
         </div>
 
-        {/* Provider readiness */}
-        <div className="flex items-center justify-center gap-2 pt-1">
-          <span
-            className="status-dot"
+        {/* Provider readiness & Engine Swapper */}
+        <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/10 mt-2">
+          <div className="flex items-center gap-2">
+            <span
+              className="status-dot"
+              style={{
+                background: isReady ? '#00ff66' : '#ff2244',
+                boxShadow: `0 0 6px ${isReady ? '#00ff66' : '#ff2244'}`,
+              }}
+            />
+            <span className="text-xs font-mono text-text-muted" style={{ fontSize: '0.65rem' }}>
+              MOTEUR: <strong className="text-white">{providerType ? providerType.toUpperCase() : 'TWILIO'}</strong> ({isReady ? 'READY' : 'OFFLINE'})
+            </span>
+          </div>
+
+          <button
+            onClick={() => switchProvider()}
+            className="px-2.5 py-1 text-[0.65rem] font-mono font-bold rounded border transition-all flex items-center gap-1.5 hover:brightness-125 cursor-pointer"
             style={{
-              background: isReady ? '#00ff66' : '#ff2244',
-              boxShadow: `0 0 6px ${isReady ? '#00ff66' : '#ff2244'}`,
+              borderColor: providerType === 'asterisk' ? '#00d4ff' : '#00ff66',
+              color: providerType === 'asterisk' ? '#00d4ff' : '#00ff66',
+              background: providerType === 'asterisk' ? 'rgba(0,212,255,0.12)' : 'rgba(0,255,102,0.12)',
+              boxShadow: `0 0 10px ${providerType === 'asterisk' ? 'rgba(0,212,255,0.2)' : 'rgba(0,255,102,0.2)'}`
             }}
-          />
-          <span className="text-xs font-mono text-text-muted" style={{ fontSize: '0.65rem' }}>
-            ENGINE ({providerType ? providerType.toUpperCase() : 'TWILIO'}): {isReady ? 'READY' : 'OFFLINE'}
-          </span>
+            title="Changer de fournisseur d'appel entre Twilio et Asterisk PBX"
+          >
+            <span>🔄 CHANGER :</span>
+            <span>{providerType === 'asterisk' ? '📞 ASTERISK (SIP)' : '⚡ TWILIO'}</span>
+          </button>
         </div>
 
       </div>

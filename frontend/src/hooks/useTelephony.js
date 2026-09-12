@@ -6,12 +6,24 @@ import useSip from './useSip.js'
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
 export default function useTelephony() {
-  const [providerType, setProviderType] = useState('twilio') // 'twilio' | 'asterisk'
+  const [providerType, setProviderTypeState] = useState(() => {
+    return localStorage.getItem('h509_provider_type') || 'twilio'
+  })
   const [sipConfig, setSipConfig] = useState(null)
   const [loadingConfig, setLoadingConfig] = useState(true)
 
   const twilioEngine = useTwilio()
   const sipEngine = useSip(sipConfig)
+
+  const setProviderType = useCallback((type) => {
+    setProviderTypeState(type)
+    localStorage.setItem('h509_provider_type', type)
+  }, [])
+
+  const switchProvider = useCallback((targetType) => {
+    const nextType = targetType || (providerType === 'twilio' ? 'asterisk' : 'twilio')
+    setProviderType(nextType)
+  }, [providerType, setProviderType])
 
   const checkProviderConfig = useCallback(async () => {
     const token = localStorage.getItem('h509_token')
@@ -22,8 +34,7 @@ export default function useTelephony() {
         headers: { Authorization: `Bearer ${token}` },
       })
       const data = res.data || {}
-      if (data.provider === 'asterisk') {
-        setProviderType('asterisk')
+      if (data.ws_url || data.provider === 'asterisk') {
         setSipConfig({
           ws_url: data.ws_url,
           username: data.username,
@@ -31,9 +42,10 @@ export default function useTelephony() {
           domain: data.domain,
           outbound_proxy: data.outbound_proxy,
         })
-      } else {
-        setProviderType('twilio')
-        setSipConfig(null)
+      }
+      // If user hasn't manually overridden provider, use server default
+      if (!localStorage.getItem('h509_provider_type')) {
+        setProviderTypeState(data.provider || 'twilio')
       }
     } catch (e) {
       console.warn('[Telephony] Could not fetch provider config:', e)
@@ -50,6 +62,8 @@ export default function useTelephony() {
 
   return {
     providerType,
+    setProviderType,
+    switchProvider,
     loadingConfig,
     isReady: providerType === 'asterisk' ? sipEngine.isRegistered : twilioEngine.isReady,
     callStatus: activeEngine.callStatus,

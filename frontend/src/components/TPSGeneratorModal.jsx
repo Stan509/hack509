@@ -41,25 +41,35 @@ export default function TPSGeneratorModal({ isOpen, onClose, initialPhone = '', 
     setError(null)
     setResults(null)
 
-    const activeTab = tabOverride || searchTab
+    let activeTab = tabOverride || searchTab
     const activeProvider = providerOverride || provider
     let queryData = {}
 
+    let pVal = queryOverride?.phone || phone
+    let fNameVal = firstName
+    let lNameVal = lastName
+
     if (activeTab === 'phone') {
-      const p = queryOverride?.phone || phone
-      if (!p) {
-        setError('Veuillez entrer un numéro de téléphone.')
+      if (!pVal) {
+        setError('Veuillez entrer un numéro ou un nom à rechercher.')
         setLoading(false)
         return
       }
-      queryData = { phone: p }
+      // If user typed letters in phone field (e.g. "georges"), fallback to name search
+      if (!anyDigit(pVal)) {
+        activeTab = 'name'
+        fNameVal = pVal
+        queryData = { first_name: pVal }
+      } else {
+        queryData = { phone: pVal }
+      }
     } else if (activeTab === 'name') {
-      if (!firstName && !lastName) {
+      if (!fNameVal && !lNameVal) {
         setError('Veuillez entrer au moins un prénom ou nom.')
         setLoading(false)
         return
       }
-      queryData = { first_name: firstName, last_name: lastName, city_state: cityState }
+      queryData = { first_name: fNameVal, last_name: lNameVal, city_state: cityState }
     } else if (activeTab === 'address') {
       if (!address) {
         setError('Veuillez entrer une adresse.')
@@ -73,6 +83,11 @@ export default function TPSGeneratorModal({ isOpen, onClose, initialPhone = '', 
       const resp = await api.post('/api/contacts/tps-lookup/', {
         search_type: activeTab,
         provider: activeProvider,
+        phone: pVal,
+        name: `${fNameVal || ''} ${lNameVal || ''}`.trim(),
+        first_name: fNameVal,
+        last_name: lNameVal,
+        location: cityState || address,
         query: queryData,
       })
       if (resp.data && resp.data.success) {
@@ -82,11 +97,13 @@ export default function TPSGeneratorModal({ isOpen, onClose, initialPhone = '', 
       }
     } catch (err) {
       console.error('TPS/FPS Lookup Error:', err)
-      setError(err.response?.data?.message || 'Erreur de connexion au serveur de recherche.')
+      setError(err.response?.data?.message || err.message || 'Erreur de connexion au serveur de recherche.')
     } finally {
       setLoading(false)
     }
   }
+
+  const anyDigit = (str) => str && /[0-9]/.test(str)
 
   const handleSaveContact = async (leadIndex, lead) => {
     setSavingId(leadIndex)

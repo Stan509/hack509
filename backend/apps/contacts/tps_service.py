@@ -27,10 +27,16 @@ def clean_phone(phone_str):
         return '+' + digits
     return '+' + digits if digits else ''
 
-def lookup_tps_fps(search_type, phone='', name='', location='', provider='all'):
+def lookup_tps_fps(search_type='phone', phone='', name='', location='', provider='all'):
     """
     Perform multi-criteria TPS & FPS search and return structured lead objects.
     """
+    # Smart Fallback: If user passed name in phone field (e.g. "georges"), redirect to name search
+    if phone and not any(c.isdigit() for c in phone) and not name:
+        name = phone
+        phone = ''
+        search_type = 'name'
+
     results = []
     digits = ''.join(c for c in phone if c.isdigit()) if phone else ''
 
@@ -50,11 +56,59 @@ def lookup_tps_fps(search_type, phone='', name='', location='', provider='all'):
         except Exception as e:
             logger.warning(f"FPS lookup warning: {e}")
 
-    # If scraping returned empty due to anti-bot headers, construct clean lead candidate
+    # If scraping returned empty, generate clean intelligence candidate lead card
     if not results:
         results = generate_candidate_lead(search_type, phone, name, location)
 
     return results
+
+def bulk_lookup_tps_fps(phones, provider='all'):
+    """
+    Perform batch lookup for a list of phone numbers.
+    Categorizes results into found (with valid info) and not_found.
+    """
+    found = []
+    not_found = []
+    combined = []
+
+    for idx, p in enumerate(phones):
+        p_clean = clean_phone(p) or p
+        leads = lookup_tps_fps(search_type='phone', phone=p_clean, provider=provider)
+        
+        # Check if lead was found with real name (not default 'Prospect')
+        is_real_match = any(
+            lead.get('first_name') not in ['Prospect', 'Unknown', ''] and 
+            lead.get('last_name') not in ['Lead', ''] for lead in leads
+        )
+
+        if is_real_match:
+            for lead in leads:
+                lead['lookup_phone'] = p_clean
+                lead['status'] = 'FOUND'
+                found.append(lead)
+                combined.append(lead)
+        else:
+            not_found_item = {
+                'lookup_phone': p_clean,
+                'phone': p_clean,
+                'first_name': 'Prospect',
+                'last_name': f'N° {idx + 1}',
+                'address': 'Non trouvé sur TPS/FPS',
+                'status': 'NOT_FOUND',
+                'source': 'TPS/FPS (Aucun résultat)',
+                'note': 'Aucun dossier public trouvé pour ce numéro.'
+            }
+            not_found.append(not_found_item)
+            combined.append(not_found_item)
+
+    return {
+        'found': found,
+        'not_found': not_found,
+        'results': combined,
+        'found_count': len(found),
+        'not_found_count': len(not_found),
+        'total': len(phones),
+    }
 
 def query_truepeoplesearch(search_type, digits, name, location):
     results = []
