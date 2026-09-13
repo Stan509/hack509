@@ -135,3 +135,14 @@ class UserDetailView(APIView):
             {'message': f'User "{username}" deleted successfully.'},
             status=status.HTTP_200_OK,
         )
+
+
+class OperatorListView(generics.ListAPIView):
+    """
+    GET /api/auth/operators/
+    Authenticated users: List all operators/agents for call transfers.
+    """
+    permission_classes = [IsAuthenticated]
+    serializer_class = UserSerializer
+    queryset = CustomUser.objects.filter(is_active=True).order_by('username')
+

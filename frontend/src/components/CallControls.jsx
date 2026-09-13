@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { useDialer } from '../contexts/DialerContext.jsx'
 import useTelephony from '../hooks/useTelephony.js'
 import TPSGeneratorModal from './TPSGeneratorModal.jsx'
+import OperatorTransferModal from './OperatorTransferModal.jsx'
 
 function VUBars({ active }) {
 
@@ -47,6 +48,14 @@ export default function CallControls() {
   const { makeCall, hangup, hold, mute, isMuted, isOnHold, isReady, simulationMode, error, providerType, switchProvider } = useTelephony()
 
   const [browserOpen, setBrowserOpen] = useState(false)
+  const [transferModalOpen, setTransferModalOpen] = useState(false)
+
+  const handleInitiateTransfer = (op, data) => {
+    // Put current call on hold during transfer
+    if (!isOnHold && hold) {
+      hold()
+    }
+  }
 
   const statusCfg = STATUS_DISPLAY[callStatus] || STATUS_DISPLAY.idle
   const isCallActive = callStatus === 'active' || callStatus === 'holding'
@@ -328,6 +337,28 @@ export default function CallControls() {
           </motion.button>
         </div>
 
+        {/* IN-CALL OPERATOR TRANSFER BUTTON */}
+        <div className="mt-2.5">
+          <motion.button
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setTransferModalOpen(true)}
+            disabled={!isCallActive && !isInProgress}
+            className="w-full py-2 text-xs font-mono font-bold rounded flex items-center justify-center gap-2 transition-all cursor-pointer"
+            style={{
+              opacity: !isCallActive && !isInProgress ? 0.35 : 1,
+              borderColor: '#00d4ff',
+              color: '#00d4ff',
+              background: 'rgba(0, 212, 255, 0.12)',
+              border: '1px solid rgba(0, 212, 255, 0.5)',
+              boxShadow: '0 0 12px rgba(0, 212, 255, 0.25)',
+            }}
+          >
+            <span>🔀</span>
+            <span>TRANSFÉRER L'APPEL VERS UN AUTRE OPÉRATEUR</span>
+          </motion.button>
+        </div>
+
         {/* Provider readiness & Engine Swapper */}
         <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/10 mt-2">
           <div className="flex items-center gap-2">
@@ -370,6 +401,14 @@ export default function CallControls() {
           contactName={`${currentContact.first_name || ''} ${currentContact.last_name || ''}`}
         />
       )}
+
+      {/* Operator Transfer Modal */}
+      <OperatorTransferModal
+        isOpen={transferModalOpen}
+        onClose={() => setTransferModalOpen(false)}
+        currentContact={currentContact}
+        onInitiateTransfer={handleInitiateTransfer}
+      />
     </div>
   )
 }

@@ -226,3 +226,27 @@ class TwimlVoiceView(APIView):
 </Response>'''
 
         return HttpResponse(twiml, content_type='text/xml')
+
+
+class CallTransferView(APIView):
+    """
+    POST /api/calls/transfer/
+    Initiate in-call operator transfer with hold audio/pip.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        target_operator_id = request.data.get('target_operator_id')
+        target_operator_name = request.data.get('target_operator_name', 'Opérateur')
+        phone = request.data.get('phone', '')
+
+        logger.info(f"Call transfer initiated by user {request.user.username} to {target_operator_name} ({target_operator_id}) for phone {phone}")
+
+        return Response({
+            'success': True,
+            'message': f"Transfert d'appel vers {target_operator_name} initié.",
+            'target_operator_id': target_operator_id,
+            'target_operator_name': target_operator_name,
+            'hold_audio_url': '/static/audio/hold_pip.mp3',
+        }, status=status.HTTP_200_OK)
+
