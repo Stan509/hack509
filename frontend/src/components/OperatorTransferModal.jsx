@@ -49,13 +49,18 @@ export default function OperatorTransferModal({ isOpen, onClose, currentContact,
     setError('')
     setTransferSuccess(null)
     try {
+      const isBroadcast = op.id === 'all'
       const res = await api.post('/api/calls/transfer/', {
         target_operator_id: op.id,
         target_operator_name: op.username || op.first_name || 'Opérateur',
         phone: currentContact?.phone || '',
+        is_broadcast: isBroadcast,
       })
 
-      const successMsg = res.data?.message || `Transfert d'appel vers ${op.username} initié.`
+      const successMsg = res.data?.message || (isBroadcast
+        ? `Appel diffusé à tous les opérateurs disponibles. Le premier qui décroche prendra l'appel.`
+        : `Transfert d'appel vers ${op.username} initié.`)
+
       setTransferSuccess(successMsg)
 
       if (onInitiateTransfer) {
@@ -66,7 +71,7 @@ export default function OperatorTransferModal({ isOpen, onClose, currentContact,
         setTransferSuccess(null)
         setTransferringId(null)
         onClose()
-      }, 2000)
+      }, 2500)
     } catch (err) {
       console.error('Transfer error:', err)
       setError(err.response?.data?.message || 'Erreur lors du transfert de l\'appel.')
@@ -120,8 +125,29 @@ export default function OperatorTransferModal({ isOpen, onClose, currentContact,
             </button>
           </div>
 
+          {/* Broadcast Transfer Button */}
+          <div className="p-3 bg-neon-cyan/5 border-b border-neon-cyan/20">
+            <button
+              onClick={() => handleTransfer({ id: 'all', username: 'TOUS LES OPÉRATEURS DISPONIBLES (Premier qui décroche gagne)' })}
+              disabled={transferringId === 'all'}
+              className="w-full py-2.5 px-4 bg-neon-green/15 hover:bg-neon-green/30 border border-neon-green/60 text-neon-green font-mono font-bold text-xs rounded flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-neon-green/20"
+            >
+              {transferringId === 'all' ? (
+                <>
+                  <span className="w-3.5 h-3.5 border-2 border-neon-green border-t-transparent rounded-full animate-spin" />
+                  <span>DIFFUSION EN COURS À TOUS LES OPÉRATEURS...</span>
+                </>
+              ) : (
+                <>
+                  <span>📡</span>
+                  <span>DIFFUSER L'APPEL À TOUS LES OPÉRATEURS DISPONIBLES (PREMIER QUI DÉCROCHE GAGNE)</span>
+                </>
+              )}
+            </button>
+          </div>
+
           {/* Search bar */}
-          <div className="p-4 bg-black/80 border-b border-white/10 flex items-center gap-3">
+          <div className="p-3.5 bg-black/80 border-b border-white/10 flex items-center gap-3">
             <span className="text-neon-cyan font-mono text-xs">🔍 RECHERCHER OPÉRATEUR :</span>
             <input
               type="text"

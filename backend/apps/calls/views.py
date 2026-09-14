@@ -232,6 +232,7 @@ class CallTransferView(APIView):
     """
     POST /api/calls/transfer/
     Initiate in-call operator transfer with hold audio/pip.
+    Supports broadcast transfers to all available operators (first to answer wins).
     """
     permission_classes = [IsAuthenticated]
 
@@ -239,12 +240,19 @@ class CallTransferView(APIView):
         target_operator_id = request.data.get('target_operator_id')
         target_operator_name = request.data.get('target_operator_name', 'Opérateur')
         phone = request.data.get('phone', '')
+        is_broadcast = request.data.get('is_broadcast', False) or target_operator_id == 'all'
 
-        logger.info(f"Call transfer initiated by user {request.user.username} to {target_operator_name} ({target_operator_id}) for phone {phone}")
+        if is_broadcast:
+            logger.info(f"Broadcast call transfer initiated by {request.user.username} to ALL available operators for phone {phone}")
+            msg = "Appel diffusé à tous les opérateurs disponibles. Le premier qui décroche prend la main."
+        else:
+            logger.info(f"Call transfer initiated by user {request.user.username} to {target_operator_name} ({target_operator_id}) for phone {phone}")
+            msg = f"Transfert d'appel vers {target_operator_name} initié."
 
         return Response({
             'success': True,
-            'message': f"Transfert d'appel vers {target_operator_name} initié.",
+            'message': msg,
+            'is_broadcast': is_broadcast,
             'target_operator_id': target_operator_id,
             'target_operator_name': target_operator_name,
             'hold_audio_url': '/static/audio/hold_pip.mp3',
