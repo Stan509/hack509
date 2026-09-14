@@ -418,7 +418,7 @@ function GeneratorPipeline({ onImport, onSaveAndQueue }) {
                   <th>#</th>
                   <th>NOM EXTRAIT / STATUT</th>
                   <th>NUMÉRO TÉLÉPHONE</th>
-                  <th>ADRESSE / SOURCE</th>
+                  <th>ADRESSE & OPÉRATEUR</th>
                   <th>ACTION</th>
                 </tr>
               </thead>
@@ -446,13 +446,21 @@ function GeneratorPipeline({ onImport, onSaveAndQueue }) {
                         </div>
                       </td>
                       <td className="text-neon-dim font-mono">{c.phone || c.lookup_phone}</td>
-                      <td className="text-text-muted text-xs truncate max-w-xs">{c.address || c.source || '--'}</td>
+                      <td className="text-text-muted text-xs truncate max-w-xs">
+                        <div>🏠 {c.address || 'Non spécifié'}</div>
+                        {c.carrier && <div className="text-[0.65rem] text-yellow-400 font-mono">🏢 {c.carrier}</div>}
+                      </td>
                       <td>
                         <button
                           type="button"
-                          onClick={() => setBrowserTarget({ phone: c.phone || c.lookup_phone, name: `${c.first_name || ''} ${c.last_name || ''}`.trim() })}
-                          className="text-xs font-mono px-2 py-0.5 rounded-sm border border-neon-cyan/50 text-neon-cyan hover:brightness-125 transition-all"
+                          onClick={() => {
+                            setTpsInitialPhone(c.phone || c.lookup_phone || '')
+                            setBrowserTarget({ phone: c.phone || c.lookup_phone, name: `${c.first_name || ''} ${c.last_name || ''}`.trim() })
+                            setTpsModalOpen(true)
+                          }}
+                          className="text-xs font-mono px-2 py-0.5 rounded-sm border border-neon-cyan/50 text-neon-cyan hover:brightness-125 transition-all cursor-pointer flex items-center gap-1"
                           style={{ fontSize: '0.65rem' }}
+                          title="Ouvrir la fiche de recherche approfondie TPS / FPS"
                         >
                           🌐 TPS / FPS
                         </button>
@@ -894,11 +902,13 @@ export default function Contacts() {
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation()
+                                  setTpsInitialPhone(contact.phone || '')
                                   setBrowserTarget({ phone: contact.phone, name: `${contact.first_name || ''} ${contact.last_name || ''}`.trim() })
+                                  setTpsModalOpen(true)
                                 }}
-                                className="text-xs font-mono px-2 py-0.5 rounded-sm border border-neon-cyan/50 text-neon-cyan hover:brightness-125 transition-all"
+                                className="text-xs font-mono px-2 py-0.5 rounded-sm border border-neon-cyan/50 text-neon-cyan hover:brightness-125 transition-all cursor-pointer"
                                 style={{ fontSize: '0.65rem' }}
-                                title="Ouvrir le navigateur embarqué TPS / FPS"
+                                title="Ouvrir la fiche de recherche système TPS / FPS"
                               >
                                 🌐 TPS / FPS
                               </button>
