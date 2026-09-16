@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { useDialer } from '../contexts/DialerContext.jsx'
 import useTelephony from '../hooks/useTelephony.js'
-import TPSGeneratorModal from './TPSGeneratorModal.jsx'
+import EmbeddedBrowserModal from './EmbeddedBrowserModal.jsx'
 import OperatorTransferModal from './OperatorTransferModal.jsx'
 
 function VUBars({ active }) {
@@ -48,7 +48,27 @@ export default function CallControls() {
   const { makeCall, hangup, hold, mute, isMuted, isOnHold, isReady, simulationMode, error, providerType, switchProvider } = useTelephony()
 
   const [browserOpen, setBrowserOpen] = useState(false)
+  const [browserTarget, setBrowserTarget] = useState('tps')
+  const [browserToast, setBrowserToast] = useState('')
   const [transferModalOpen, setTransferModalOpen] = useState(false)
+
+  const handleOpenSearch = async (target) => {
+    setBrowserTarget(target)
+    const phone = currentContact?.phone || ''
+    const siteLabel = target === 'fps' ? 'FPS' : 'TPS'
+    if (phone) {
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(phone)
+          setBrowserToast(`Numéro copié — collez-le dans la recherche ${siteLabel}`)
+        }
+      } catch {
+        // Handled in modal
+      }
+    }
+    setBrowserOpen(true)
+    setTimeout(() => setBrowserToast(''), 5000)
+  }
 
   const handleInitiateTransfer = (op, data) => {
     // Put current call on hold during transfer
@@ -212,15 +232,31 @@ export default function CallControls() {
               </button>
             </div>
 
-            {/* Embedded TPS / FPS Lookup Buttons */}
-            <div className="flex items-center justify-center gap-2 mb-3">
-              <button
-                onClick={() => setBrowserOpen(true)}
-                className="px-2.5 py-1 text-xs font-mono rounded-sm border border-neon-cyan/50 text-neon-cyan bg-neon-cyan/10 hover:bg-neon-cyan/20 transition-all flex items-center gap-1"
-                title="Ouvrir le navigateur embarqué TPS / FPS"
-              >
-                <span>🌐 RECHERCHE TPS / FPS EMBARQUÉE</span>
-              </button>
+            {/* Separate TPS & FPS Lookup Buttons */}
+            <div className="flex flex-col items-center justify-center gap-1.5 mb-3">
+              <div className="flex items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleOpenSearch('tps')}
+                  className="px-3 py-1 text-xs font-mono rounded-sm border border-neon-cyan/60 text-neon-cyan bg-neon-cyan/10 hover:bg-neon-cyan/20 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                  title="Ouvrir TruePeopleSearch dans le navigateur embarqué"
+                >
+                  <span>🔎 TPS</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOpenSearch('fps')}
+                  className="px-3 py-1 text-xs font-mono rounded-sm border border-neon-warn/60 text-neon-warn bg-neon-warn/10 hover:bg-neon-warn/20 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                  title="Ouvrir FastPeopleSearch dans le navigateur embarqué"
+                >
+                  <span>⚡ FPS</span>
+                </button>
+              </div>
+              {browserToast && (
+                <div className="text-[0.65rem] font-mono text-neon-green animate-pulse">
+                  ✓ {browserToast}
+                </div>
+              )}
             </div>
 
             {/* Timer */}
@@ -392,11 +428,12 @@ export default function CallControls() {
 
       </div>
 
-      {/* TPS Generator Modal */}
+      {/* Embedded Chromium Browser Modal */}
       {currentContact && (
-        <TPSGeneratorModal
+        <EmbeddedBrowserModal
           isOpen={browserOpen}
           onClose={() => setBrowserOpen(false)}
+          initialTarget={browserTarget}
           initialPhone={currentContact.phone}
           contactName={`${currentContact.first_name || ''} ${currentContact.last_name || ''}`}
         />

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth, api } from '../contexts/AuthContext.jsx'
 import { useDialer } from '../contexts/DialerContext.jsx'
 import ContactCard from '../components/ContactCard.jsx'
-import TPSGeneratorModal from '../components/TPSGeneratorModal.jsx'
+import EmbeddedBrowserModal from '../components/EmbeddedBrowserModal.jsx'
 
 const STATUS_COLORS = {
   new:          { label: 'NEW',         color: '#3b82f6' },
@@ -564,9 +564,30 @@ export default function Contacts() {
   const [favoriteOnly, setFavoriteOnly] = useState(false)
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [browserTarget, setBrowserTarget] = useState(null)
+  const [browserSite, setBrowserSite] = useState('tps')
   const [tpsModalOpen, setTpsModalOpen] = useState(false)
   const [tpsInitialPhone, setTpsInitialPhone] = useState('')
+  const [clipboardNotification, setClipboardNotification] = useState('')
   const PAGE_SIZE = 20
+
+  const handleOpenBrowser = async (target, phone = '', name = '') => {
+    setBrowserSite(target)
+    setTpsInitialPhone(phone)
+    setBrowserTarget({ phone, name })
+    const siteLabel = target === 'fps' ? 'FPS' : 'TPS'
+    if (phone) {
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(phone)
+          setClipboardNotification(`Numéro copié — collez-le dans la recherche ${siteLabel}`)
+        }
+      } catch {
+        // Fallback in modal
+      }
+    }
+    setTpsModalOpen(true)
+    setTimeout(() => setClipboardNotification(''), 5000)
+  }
 
   const toggleSelectAll = () => {
     if (selectedIds.size === contacts.length && contacts.length > 0) {
@@ -639,24 +660,26 @@ export default function Contacts() {
             </span>
           </h1>
         </motion.div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
-            onClick={() => { setTpsInitialPhone(''); setTpsModalOpen(true) }}
-            className="btn-cyber px-4 py-2 text-xs rounded-sm font-bold flex items-center gap-1.5"
-            style={{ borderColor: '#00ff66', color: '#00ff66', background: 'rgba(0, 255, 102, 0.12)' }}
+            onClick={() => handleOpenBrowser('tps', '')}
+            className="btn-cyber px-3 py-2 text-xs rounded-sm font-bold flex items-center gap-1.5 cursor-pointer"
+            style={{ borderColor: '#00d4ff', color: '#00d4ff', background: 'rgba(0, 212, 255, 0.12)' }}
+            title="Ouvrir le site TruePeopleSearch dans le navigateur embarqué"
           >
-            <span>⚡ RECHERCHE TPS / FPS</span>
+            <span>🔎 RECHERCHE TPS</span>
           </button>
           <button
-            onClick={() => { setShowGenerator(!showGenerator); if (!showGenerator) setShowImport(false) }}
-            className="btn-cyber px-4 py-2 text-xs rounded-sm font-bold flex items-center gap-1"
-            style={{ borderColor: '#00d4ff', color: '#00d4ff' }}
+            onClick={() => handleOpenBrowser('fps', '')}
+            className="btn-cyber px-3 py-2 text-xs rounded-sm font-bold flex items-center gap-1.5 cursor-pointer"
+            style={{ borderColor: '#ff9900', color: '#ff9900', background: 'rgba(255, 153, 0, 0.12)' }}
+            title="Ouvrir le site FastPeopleSearch dans le navigateur embarqué"
           >
-            ⚡ GENERATEUR PAR INDICATIF
+            <span>⚡ RECHERCHE FPS</span>
           </button>
           <button
             onClick={() => { setShowImport(!showImport); if (!showImport) setShowGenerator(false) }}
-            className="btn-cyber px-4 py-2 text-xs rounded-sm font-bold"
+            className="btn-cyber px-4 py-2 text-xs rounded-sm font-bold cursor-pointer"
             style={{ borderColor: '#00ff66', color: '#00ff66' }}
           >
             {showImport ? '✕ CLOSE' : '⬆ IMPORT CSV'}
@@ -742,26 +765,36 @@ export default function Contacts() {
             onChange={(e) => setQuickPhone(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && quickPhone.trim()) {
-                setTpsInitialPhone(quickPhone.trim())
-                setTpsModalOpen(true)
+                handleOpenBrowser('tps', quickPhone.trim())
               }
             }}
-            placeholder="Entrez un numéro ou nom (ex: 3055550199)..."
+            placeholder="Entrez un numéro (ex: 3055550199)..."
             className="input-cyber px-3 py-1.5 text-xs rounded-sm flex-1 min-w-48"
           />
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => {
-              setTpsInitialPhone(quickPhone.trim())
-              setTpsModalOpen(true)
-            }}
-            className="btn-cyber px-4 py-1.5 text-xs rounded-sm font-bold flex items-center gap-1.5"
-            style={{ borderColor: '#00ff66', color: '#00ff66' }}
+            onClick={() => handleOpenBrowser('tps', quickPhone.trim())}
+            className="btn-cyber px-3 py-1.5 text-xs rounded-sm font-bold flex items-center gap-1.5 cursor-pointer"
+            style={{ borderColor: '#00d4ff', color: '#00d4ff' }}
+            title="Copier le numéro et ouvrir TruePeopleSearch"
           >
-            <span>🔍 LANCER RECHERCHE TPS / FPS (IN-APP)</span>
+            <span>🔎 TPS</span>
+          </button>
+          <button
+            onClick={() => handleOpenBrowser('fps', quickPhone.trim())}
+            className="btn-cyber px-3 py-1.5 text-xs rounded-sm font-bold flex items-center gap-1.5 cursor-pointer"
+            style={{ borderColor: '#ff9900', color: '#ff9900' }}
+            title="Copier le numéro et ouvrir FastPeopleSearch"
+          >
+            <span>⚡ FPS</span>
           </button>
         </div>
+        {clipboardNotification && (
+          <div className="text-[0.65rem] font-mono text-neon-green animate-pulse w-full">
+            ✓ {clipboardNotification}
+          </div>
+        )}
       </div>
 
       {/* Table */}
@@ -897,22 +930,32 @@ export default function Contacts() {
                             VIEW
                           </button>
                           {contact.phone && (
-                            <>
+                            <div className="flex items-center gap-1">
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation()
-                                  setTpsInitialPhone(contact.phone || '')
-                                  setBrowserTarget({ phone: contact.phone, name: `${contact.first_name || ''} ${contact.last_name || ''}`.trim() })
-                                  setTpsModalOpen(true)
+                                  handleOpenBrowser('tps', contact.phone || '', `${contact.first_name || ''} ${contact.last_name || ''}`.trim())
                                 }}
                                 className="text-xs font-mono px-2 py-0.5 rounded-sm border border-neon-cyan/50 text-neon-cyan hover:brightness-125 transition-all cursor-pointer"
                                 style={{ fontSize: '0.65rem' }}
-                                title="Ouvrir la fiche de recherche système TPS / FPS"
+                                title="Copier le numéro et ouvrir TruePeopleSearch"
                               >
-                                🌐 TPS / FPS
+                                🔎 TPS
                               </button>
-                            </>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleOpenBrowser('fps', contact.phone || '', `${contact.first_name || ''} ${contact.last_name || ''}`.trim())
+                                }}
+                                className="text-xs font-mono px-2 py-0.5 rounded-sm border border-neon-warn/50 text-neon-warn hover:brightness-125 transition-all cursor-pointer"
+                                style={{ fontSize: '0.65rem' }}
+                                title="Copier le numéro et ouvrir FastPeopleSearch"
+                              >
+                                ⚡ FPS
+                              </button>
+                            </div>
                           )}
                         </div>
                       </td>
@@ -980,17 +1023,17 @@ export default function Contacts() {
         )}
       </AnimatePresence>
 
-      {/* TPS / FPS Generator & Search Modal */}
-      <TPSGeneratorModal
+      {/* Embedded Chromium Browser Modal */}
+      <EmbeddedBrowserModal
         isOpen={tpsModalOpen || Boolean(browserTarget)}
         onClose={() => {
           setTpsModalOpen(false)
           setBrowserTarget(null)
         }}
+        initialTarget={browserSite}
         initialPhone={tpsInitialPhone || browserTarget?.phone || ''}
         contactName={browserTarget?.name || ''}
-        onAddToQueue={(c) => addToQueue(c)}
-        onContactSaved={() => loadContacts()}
+        onImportSuccess={() => loadContacts()}
       />
     </div>
   )

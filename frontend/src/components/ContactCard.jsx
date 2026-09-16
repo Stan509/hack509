@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import TPSGeneratorModal from './TPSGeneratorModal.jsx'
+import EmbeddedBrowserModal from './EmbeddedBrowserModal.jsx'
 
 const STATUS_CONFIG = {
   new:        { label: 'NEW',         color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' },
@@ -16,6 +16,27 @@ const STATUS_CONFIG = {
 
 export default function ContactCard({ contact, onAddToQueue, onView, compact = false }) {
   const [browserOpen, setBrowserOpen] = useState(false)
+  const [browserTarget, setBrowserTarget] = useState('tps')
+  const [browserToast, setBrowserToast] = useState('')
+
+  const handleOpenSearch = async (target, e) => {
+    if (e) e.stopPropagation()
+    setBrowserTarget(target)
+    const phone = contact?.phone || ''
+    const siteLabel = target === 'fps' ? 'FPS' : 'TPS'
+    if (phone) {
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(phone)
+          setBrowserToast(`Numéro copié — collez-le dans la recherche ${siteLabel}`)
+        }
+      } catch {
+        // Handled in modal
+      }
+    }
+    setBrowserOpen(true)
+    setTimeout(() => setBrowserToast(''), 5000)
+  }
 
   if (!contact) return null
 
@@ -114,21 +135,34 @@ export default function ContactCard({ contact, onAddToQueue, onView, compact = f
           </div>
         )}
 
-        {/* External Lookup Links */}
+        {/* External Lookup Links (Separate TPS and FPS) */}
         {contact.phone && (
-          <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-neon-green border-opacity-10">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                setBrowserOpen(true)
-              }}
-              className="btn-cyber px-2.5 py-1 rounded-sm flex items-center gap-1 hover:brightness-125 transition-all"
-              style={{ borderColor: '#00d4ff', color: '#00d4ff', fontSize: '0.65rem' }}
-              title="Rechercher avec le navigateur embarqué TPS & FPS"
-            >
-              🌐 RECHERCHE EMBARQUÉE (TPS / FPS)
-            </button>
+          <div className="flex flex-col gap-1.5 mt-3 pt-3 border-t border-neon-green border-opacity-10">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={(e) => handleOpenSearch('tps', e)}
+                className="btn-cyber px-2.5 py-1 rounded-sm flex items-center gap-1 hover:brightness-125 transition-all cursor-pointer"
+                style={{ borderColor: '#00d4ff', color: '#00d4ff', fontSize: '0.65rem' }}
+                title="Consulter TruePeopleSearch dans le navigateur embarqué"
+              >
+                🔎 TPS
+              </button>
+              <button
+                type="button"
+                onClick={(e) => handleOpenSearch('fps', e)}
+                className="btn-cyber px-2.5 py-1 rounded-sm flex items-center gap-1 hover:brightness-125 transition-all cursor-pointer"
+                style={{ borderColor: '#ff9900', color: '#ff9900', fontSize: '0.65rem' }}
+                title="Consulter FastPeopleSearch dans le navigateur embarqué"
+              >
+                ⚡ FPS
+              </button>
+            </div>
+            {browserToast && (
+              <div className="text-[0.6rem] font-mono text-neon-green animate-pulse">
+                ✓ {browserToast}
+              </div>
+            )}
           </div>
         )}
 
@@ -142,14 +176,14 @@ export default function ContactCard({ contact, onAddToQueue, onView, compact = f
         )}
       </motion.div>
 
-      {/* TPS Generator Modal */}
+      {/* Embedded Chromium Browser Modal */}
       {contact.phone && (
-        <TPSGeneratorModal
+        <EmbeddedBrowserModal
           isOpen={browserOpen}
           onClose={() => setBrowserOpen(false)}
+          initialTarget={browserTarget}
           initialPhone={contact.phone}
           contactName={`${contact.first_name || ''} ${contact.last_name || ''}`}
-          onAddToQueue={onAddToQueue}
         />
       )}
     </>

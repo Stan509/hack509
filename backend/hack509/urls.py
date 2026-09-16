@@ -20,6 +20,7 @@ urlpatterns = [
     path('api/contacts/', include('apps.contacts.urls')),
     path('api/calls/', include('apps.calls.urls')),
     path('api/twilio/', include('apps.twilio_config.urls')),
+    path('api/browser/', include('apps.contacts.urls_browser')),
 
     # Stripped route fallbacks (for App Platform ingress /api prefix stripping)
     path('auth/', include('apps.accounts.urls')),
@@ -29,5 +30,6 @@ urlpatterns = [
     path('contacts/', include('apps.contacts.urls')),
     path('calls/', include('apps.calls.urls')),
     path('twilio/', include('apps.twilio_config.urls')),
+    path('browser/', include('apps.contacts.urls_browser')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 

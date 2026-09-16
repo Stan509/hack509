@@ -37,6 +37,22 @@ services:
       # through the HTTPS frontend at /sip-ws.
       - "10000-10100:10000-10100/udp"
 
+  browser:
+    build: ./browser
+    restart: unless-stopped
+    expose:
+      - "6080"
+      - "9222"
+    environment:
+      - SCREEN_WIDTH=1366
+      - SCREEN_HEIGHT=768
+    volumes:
+      - backend_data:/data
+    mem_limit: 1536m
+    ipc: host
+    security_opt:
+      - seccomp:unconfined
+
   frontend:
     build: ./frontend
     restart: unless-stopped
@@ -46,6 +62,7 @@ services:
       - backend
       - realtime
       - asterisk
+      - browser
 
 volumes:
   backend_data:

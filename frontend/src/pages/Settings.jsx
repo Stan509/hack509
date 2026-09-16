@@ -33,6 +33,369 @@ function ConfigField({ label, value, onChange, type = 'text', placeholder = '', 
   )
 }
 
+function BrowserProxySection({ api }) {
+  const [proxyCfg, setProxyCfg] = useState({
+    enabled: false,
+    provider: 'Decodo',
+    protocol: 'http',
+    host: 'gate.decodo.com',
+    port: 7000,
+    username: '',
+    password: '',
+    country: 'US',
+    session_type: 'sticky',
+    session_duration: 30,
+    has_password: false,
+  })
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saveMsg, setSaveMsg] = useState('')
+  const [saveErr, setSaveErr] = useState('')
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState(null)
+
+  useEffect(() => {
+    api.get('/api/browser/proxy/')
+      .then((res) => {
+        if (res.data) {
+          setProxyCfg((prev) => ({
+            ...prev,
+            ...res.data,
+            password: '',
+          }))
+        }
+      })
+      .catch((err) => console.warn('Load proxy config error:', err))
+      .finally(() => setLoading(false))
+  }, [api])
+
+  const handleSaveProxy = async (e) => {
+    if (e) e.preventDefault()
+    setSaving(true)
+    setSaveMsg('')
+    setSaveErr('')
+    try {
+      const payload = { ...proxyCfg }
+      if (!payload.password) delete payload.password
+      const res = await api.post('/api/browser/proxy/', payload)
+      setSaveMsg(res.data?.message || 'Configuration proxy enregistrée avec succès.')
+      setProxyCfg((p) => ({ ...p, has_password: Boolean(res.data?.has_password || p.has_password), password: '' }))
+      setTimeout(() => setSaveMsg(''), 5000)
+    } catch (err) {
+      setSaveErr(err.response?.data?.message || 'Erreur lors de la sauvegarde du proxy.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDisableProxy = async () => {
+    setProxyCfg((prev) => ({ ...prev, enabled: false }))
+    try {
+      await api.post('/api/browser/proxy/', { ...proxyCfg, enabled: false, password: '' })
+      setSaveMsg('Proxy désactivé. Le navigateur utilise désormais l’adresse IP directe du serveur.')
+      setTimeout(() => setSaveMsg(''), 5000)
+    } catch (err) {
+      setSaveErr('Erreur lors de la désactivation.')
+    }
+  }
+
+  const handleClearProxy = async () => {
+    if (!window.confirm('Voulez-vous effacer définitivement les identifiants et l’hôte proxy ?')) return
+    try {
+      await api.delete('/api/browser/proxy/')
+      setProxyCfg({
+        enabled: false,
+        provider: 'Decodo',
+        protocol: 'http',
+        host: '',
+        port: 7000,
+        username: '',
+        password: '',
+        country: 'US',
+        session_type: 'sticky',
+        session_duration: 30,
+        has_password: false,
+      })
+      setSaveMsg('Configuration proxy effacée.')
+      setTimeout(() => setSaveMsg(''), 4000)
+    } catch (err) {
+      setSaveErr('Erreur lors de la réinitialisation du proxy.')
+    }
+  }
+
+  const handleTestConnection = async () => {
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const payload = { ...proxyCfg }
+      const res = await api.post('/api/browser/proxy/test/', payload)
+      setTestResult(res.data)
+    } catch (err) {
+      setTestResult({
+        success: false,
+        error: err.response?.data?.error || err.message || 'Échec du test de connexion réseau.',
+      })
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="card-cyber rounded p-6"
+      style={{
+        border: '1px solid rgba(0, 212, 255, 0.4)',
+        boxShadow: '0 0 30px rgba(0, 212, 255, 0.08)',
+      }}
+    >
+      <div className="flex items-center justify-between gap-3 mb-5">
+        <div className="flex items-center gap-3">
+          <div className="w-px h-8 bg-neon-cyan" style={{ boxShadow: '0 0 6px #00d4ff' }} />
+          <div>
+            <div className="terminal-header mb-0.5">Réseau & Empreinte IP</div>
+            <h2 className="text-neon-cyan font-mono font-bold">PROXY DU NAVIGATEUR (DECODO / CONNEXION DIRECTE)</h2>
+          </div>
+        </div>
+
+        {/* Toggle Switch */}
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={proxyCfg.enabled}
+            onChange={(e) => setProxyCfg((p) => ({ ...p, enabled: e.target.checked }))}
+            className="sr-only"
+          />
+          <div
+            className={`w-11 h-6 rounded-full transition-colors flex items-center p-1 ${
+              proxyCfg.enabled ? 'bg-neon-cyan' : 'bg-white/10'
+            }`}
+          >
+            <div
+              className={`w-4 h-4 rounded-full bg-black transition-transform ${
+                proxyCfg.enabled ? 'translate-x-5' : 'translate-x-0'
+              }`}
+            />
+          </div>
+          <span className="font-mono text-xs font-bold text-white">
+            {proxyCfg.enabled ? 'PROXY ACTIVÉ' : 'CONNEXION DIRECTE (IP SERVEUR)'}
+          </span>
+        </label>
+      </div>
+
+      <div className="text-text-muted text-xs font-mono mb-5">
+        Le navigateur Chromium distant utilise par défaut l’adresse IP naturelle de votre serveur. Si votre serveur n'est pas situé aux États-Unis ou subit des limitations, activez le proxy résidentiel Decodo ou votre fournisseur HTTP/SOCKS5.
+      </div>
+
+      <form onSubmit={handleSaveProxy} className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <ConfigField
+            label="FOURNISSEUR"
+            value={proxyCfg.provider}
+            onChange={(v) => setProxyCfg((p) => ({ ...p, provider: v }))}
+            placeholder="Decodo"
+            hint="Nom du fournisseur (ex: Decodo)"
+          />
+          <div>
+            <label className="block terminal-header mb-1">PROTOCOLE</label>
+            <select
+              value={proxyCfg.protocol}
+              onChange={(e) => setProxyCfg((p) => ({ ...p, protocol: e.target.value }))}
+              className="input-cyber w-full px-3 py-2.5 text-sm rounded-sm bg-black"
+            >
+              <option value="http">HTTP (Recommandé Decodo)</option>
+              <option value="socks5">SOCKS5</option>
+            </select>
+            <div className="text-text-muted text-xs font-mono mt-1" style={{ fontSize: '0.65rem' }}>
+              Protocole de connexion proxy
+            </div>
+          </div>
+          <ConfigField
+            label="PAYS DE SORTIE"
+            value={proxyCfg.country}
+            onChange={(v) => setProxyCfg((p) => ({ ...p, country: v }))}
+            placeholder="US"
+            hint="Code ISO du pays (ex: US pour États-Unis)"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="md:col-span-2">
+            <ConfigField
+              label="HÔTE DU PROXY"
+              value={proxyCfg.host}
+              onChange={(v) => setProxyCfg((p) => ({ ...p, host: v }))}
+              placeholder="gate.decodo.com"
+              hint="Exemple Decodo: gate.decodo.com"
+            />
+          </div>
+          <ConfigField
+            label="PORT DU PROXY"
+            value={proxyCfg.port}
+            onChange={(v) => setProxyCfg((p) => ({ ...p, port: v }))}
+            placeholder="7000"
+            hint="Port du proxy (ex: 7000)"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <ConfigField
+            label="NOM D'UTILISATEUR (AUTHENTIFICATION)"
+            value={proxyCfg.username}
+            onChange={(v) => setProxyCfg((p) => ({ ...p, username: v }))}
+            placeholder="user-IDENTIFIANT-country-us"
+            hint="Format Decodo suggéré : user-IDENTIFIANT-country-us"
+          />
+          <ConfigField
+            label={proxyCfg.has_password ? 'MOT DE PASSE PROXY [DÉJÀ CONFIGURÉ]' : 'MOT DE PASSE PROXY'}
+            value={proxyCfg.password}
+            onChange={(v) => setProxyCfg((p) => ({ ...p, password: v }))}
+            placeholder={proxyCfg.has_password ? '••••••••••••' : 'Saisir le mot de passe proxy'}
+            masked
+            hint="Stocké de manière sécurisée côté serveur. Jamais affiché en clair."
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block terminal-header mb-1">TYPE DE SESSION</label>
+            <select
+              value={proxyCfg.session_type}
+              onChange={(e) => setProxyCfg((p) => ({ ...p, session_type: e.target.value }))}
+              className="input-cyber w-full px-3 py-2.5 text-sm rounded-sm bg-black"
+            >
+              <option value="sticky">Session Persistante (Sticky IP)</option>
+              <option value="rotating">Session Rotative (Changement d'IP automatique)</option>
+            </select>
+          </div>
+          <ConfigField
+            label="DURÉE DE SESSION (MINUTES)"
+            type="number"
+            value={proxyCfg.session_duration}
+            onChange={(v) => setProxyCfg((p) => ({ ...p, session_duration: v }))}
+            placeholder="30"
+            hint="Durée de conservation de la même IP résidentielle"
+          />
+        </div>
+
+        {/* Feedback messages */}
+        <AnimatePresence>
+          {saveMsg && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="text-neon-cyan text-xs font-mono p-3 rounded-sm bg-neon-cyan/10 border border-neon-cyan/30"
+            >
+              ✓ {saveMsg}
+            </motion.div>
+          )}
+          {saveErr && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="text-neon-danger text-xs font-mono p-3 rounded-sm bg-neon-danger/10 border border-neon-danger/30"
+            >
+              ⛔ {saveErr}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Test Result Display */}
+        <AnimatePresence>
+          {testResult && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="p-4 rounded-sm text-xs font-mono space-y-2"
+              style={{
+                background: testResult.success ? 'rgba(0, 255, 102, 0.08)' : 'rgba(255, 34, 68, 0.08)',
+                border: `1px solid ${testResult.success ? 'rgba(0, 255, 102, 0.3)' : 'rgba(255, 34, 68, 0.3)'}`,
+              }}
+            >
+              <div className="font-bold flex items-center justify-between">
+                <span style={{ color: testResult.success ? '#00ff66' : '#ff2244' }}>
+                  {testResult.success ? '✓ TEST DE CONNEXION RÉUSSI' : '⛔ ÉCHEC DE LA CONNEXION'}
+                </span>
+                <span className="text-text-muted">
+                  MODE : {testResult.mode === 'proxy' ? 'PROXY ACTIF' : 'IP NATURELLE SERVEUR'}
+                </span>
+              </div>
+
+              {testResult.success ? (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1 text-white">
+                  <div>
+                    <span className="text-text-muted">ADRESSE IP : </span>
+                    <strong className="text-neon-green">{testResult.ip}</strong>
+                  </div>
+                  <div>
+                    <span className="text-text-muted">PAYS DÉTECTÉ : </span>
+                    <strong className="text-white">{testResult.country}</strong> {testResult.city && `(${testResult.city})`}
+                  </div>
+                  <div>
+                    <span className="text-text-muted">CONFORMITÉ US : </span>
+                    {testResult.is_us ? (
+                      <span className="text-neon-green font-bold">[LOCALISATION : ÉTATS-UNIS ✓]</span>
+                    ) : (
+                      <span className="text-neon-warn font-bold">[NON-US — REQUIS POUR TPS/FPS ⚠️]</span>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-neon-danger pt-1">
+                  <strong>DIAGNOSTIC : </strong> {testResult.error}
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Buttons */}
+        <div className="flex flex-wrap gap-3 pt-2">
+          <button
+            type="submit"
+            disabled={saving}
+            className="btn-cyber flex-1 py-3 text-sm font-bold rounded-sm border-neon-cyan text-neon-cyan hover:bg-neon-cyan/10 cursor-pointer"
+          >
+            {saving ? '⟳ ENREGISTREMENT...' : '▶ ENREGISTRER LA CONFIGURATION PROXY'}
+          </button>
+          <button
+            type="button"
+            onClick={handleTestConnection}
+            disabled={testing}
+            className="btn-cyber px-5 py-3 text-sm font-bold rounded-sm cursor-pointer"
+            style={{ borderColor: '#00ff66', color: '#00ff66' }}
+            title="Tester l'adresse IP de sortie et la localisation géographique"
+          >
+            {testing ? '⟳ TEST EN COURS...' : '⚡ TESTER LA CONNEXION (IP / PAYS)'}
+          </button>
+          {proxyCfg.enabled && (
+            <button
+              type="button"
+              onClick={handleDisableProxy}
+              className="btn-cyber px-4 py-3 text-xs font-mono rounded-sm cursor-pointer"
+              style={{ borderColor: '#ff9900', color: '#ff9900' }}
+            >
+              DÉSACTIVER PROXY
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleClearProxy}
+            className="btn-cyber btn-danger px-4 py-3 text-xs font-mono rounded-sm cursor-pointer"
+            title="Effacer l'hôte et les identifiants"
+          >
+            EFFACER
+          </button>
+        </div>
+      </form>
+    </motion.div>
+  )
+}
+
 export default function Settings() {
   const { api } = useAuth()
 
@@ -488,6 +851,9 @@ export default function Settings() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Browser Proxy Settings (Decodo / Natural Server IP) */}
+      <BrowserProxySection api={api} />
 
       {/* Danger Zone */}
       <motion.div
