@@ -1,15 +1,13 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 
-export default function EmbeddedBrowserModal({ isOpen, onClose, phone, contactName }) {
+export default function EmbeddedBrowserModal({ isOpen, onClose }) {
   const [activeTab, setActiveTab] = useState('tps') // 'tps' | 'fps'
   const [loading, setLoading] = useState(true)
   const [iframeError, setIframeError] = useState(false)
 
-  const cleanDigits = phone ? phone.replace(/[^0-9]/g, '') : ''
-
-  const tpsUrl = cleanDigits ? `https://www.truepeoplesearch.com/results?phoneno=${cleanDigits}` : 'https://www.truepeoplesearch.com'
-  const fpsUrl = cleanDigits ? `https://www.fastpeoplesearch.com/phone/${cleanDigits}` : 'https://www.fastpeoplesearch.com'
+  const tpsUrl = 'https://www.truepeoplesearch.com'
+  const fpsUrl = 'https://www.fastpeoplesearch.com'
 
   const currentUrl = activeTab === 'tps' ? tpsUrl : fpsUrl
 
@@ -18,7 +16,7 @@ export default function EmbeddedBrowserModal({ isOpen, onClose, phone, contactNa
       setLoading(true)
       setIframeError(false)
     }
-  }, [isOpen, activeTab, phone])
+  }, [isOpen, activeTab])
 
   if (!isOpen) return null
 
@@ -51,20 +49,13 @@ export default function EmbeddedBrowserModal({ isOpen, onClose, phone, contactNa
               </div>
               <div className="h-4 w-px bg-white/20" />
               <div className="terminal-header flex items-center gap-2">
-                <span>NAVIGATEUR EMBARQUÉ RECHERCHE TPS / FPS</span>
-                {contactName && (
-                  <span className="text-neon-cyan text-[0.65rem] font-normal">
-                    — {contactName} ({phone})
-                  </span>
-                )}
+                <span>NAVIGATEUR EMBARQUÉ — CONSULTATION MANUELLE</span>
               </div>
             </div>
 
-            {/* VPN / Proxy USA Indicator Badge */}
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-sm bg-neon-green/10 border border-neon-green/30 text-neon-green text-[0.65rem] font-mono">
-                <span className="w-2 h-2 rounded-full bg-neon-green animate-pulse" />
-                <span>🛡️ PROXY / VPN USA : ACTIF</span>
+                <span>SESSION LOCALE — AUCUN PROXY</span>
               </div>
               <button
                 onClick={onClose}
@@ -133,13 +124,13 @@ export default function EmbeddedBrowserModal({ isOpen, onClose, phone, contactNa
             {loading && (
               <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-10 flex flex-col items-center justify-center gap-3">
                 <div className="w-8 h-8 border-2 border-neon-green border-t-transparent rounded-full animate-spin" />
-                <div className="text-neon-green text-xs font-mono">CHARGEMENT DE LA RECHERCHE EN DIRECT VIA PROXY USA...</div>
+                <div className="text-neon-green text-xs font-mono">CHARGEMENT DU SITE EXTERNE...</div>
               </div>
             )}
 
             <iframe
               src={currentUrl}
-              title={`Lookup ${phone}`}
+              title="External site"
               className="w-full h-full border-0"
               sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
               onLoad={() => setLoading(false)}
@@ -154,10 +145,10 @@ export default function EmbeddedBrowserModal({ isOpen, onClose, phone, contactNa
               <div className="absolute inset-0 bg-black/95 z-20 flex flex-col items-center justify-center p-6 text-center space-y-4">
                 <div className="text-3xl">🛡️</div>
                 <div className="text-neon-warn font-mono font-bold text-sm">
-                  RECHERCHE TPS / FPS PRÊTE POUR LE NUMÉRO {phone}
+                  LE SITE NE PERMET PAS L'AFFICHAGE EMBARQUÉ
                 </div>
                 <div className="text-text-muted font-mono text-xs max-w-md">
-                  TruePeopleSearch et FastPeopleSearch nécessitent parfois une validation anti-bot directe. Cliquez ci-dessous pour lancer la recherche sécurisée immédiatement :
+                  Ouvrez le site dans un onglet externe pour une consultation manuelle. Aucun numéro ou contact de l'application n'est transmis automatiquement.
                 </div>
                 <div className="flex gap-3 pt-2">
                   <a
@@ -166,7 +157,7 @@ export default function EmbeddedBrowserModal({ isOpen, onClose, phone, contactNa
                     rel="noopener noreferrer"
                     className="btn-cyber px-4 py-2.5 text-xs font-bold rounded-sm border-neon-cyan text-neon-cyan"
                   >
-                    🔎 ACCÉDER À TRUEPEOPLESEARCH ({cleanDigits})
+                    🔎 OUVRIR TRUEPEOPLESEARCH
                   </a>
                   <a
                     href={fpsUrl}
@@ -174,7 +165,7 @@ export default function EmbeddedBrowserModal({ isOpen, onClose, phone, contactNa
                     rel="noopener noreferrer"
                     className="btn-cyber px-4 py-2.5 text-xs font-bold rounded-sm border-neon-warn text-neon-warn"
                   >
-                    ⚡ ACCÉDER À FASTPEOPLESEARCH ({cleanDigits})
+                    ⚡ OUVRIR FASTPEOPLESEARCH
                   </a>
                 </div>
               </div>

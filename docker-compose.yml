@@ -3,30 +3,49 @@ version: '3.8'
 services:
   backend:
     build: ./backend
-    restart: always
-    ports:
-      - "8000:8000"
+    restart: unless-stopped
+    env_file:
+      - .env
+    expose:
+      - "8000"
     environment:
       - DEBUG=False
-      - ALLOWED_HOSTS=*
-      - SECRET_KEY=production-cyberpunk-secret-key-hacker509-change-me
+      - SQLITE_DB_PATH=/data/db.sqlite3
     volumes:
-      - backend_data:/app
+      - backend_data:/data
 
   realtime:
     build: ./realtime
-    restart: always
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - JWT_SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set in .env}
+    expose:
+      - "8001"
+
+  asterisk:
+    image: andrius/asterisk:22
+    restart: unless-stopped
+    volumes:
+      - ./asterisk/pjsip.conf:/etc/asterisk/pjsip.conf:ro
+      - ./asterisk/extensions.conf:/etc/asterisk/extensions.conf:ro
+      - ./asterisk/http.conf:/etc/asterisk/http.conf:ro
+      - ./asterisk/rtp.conf:/etc/asterisk/rtp.conf:ro
     ports:
-      - "8001:8001"
+      # WebRTC audio only. Do not publish SIP UDP/TCP: signalling is proxied
+      # through the HTTPS frontend at /sip-ws.
+      - "10000-10100:10000-10100/udp"
 
   frontend:
     build: ./frontend
-    restart: always
+    restart: unless-stopped
     ports:
       - "80:80"
     depends_on:
       - backend
       - realtime
+      - asterisk
 
 volumes:
   backend_data:

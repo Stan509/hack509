@@ -40,9 +40,9 @@ const useTwilio = () => {
       const twilioToken = await fetchToken()
 
       if (!twilioToken) {
-        console.warn('[Twilio] No valid token available — entering simulation mode')
-        setSimulationMode(true)
-        setIsReady(true)
+        setSimulationMode(false)
+        setIsReady(false)
+        setError('Twilio is not configured or the access token is unavailable.')
         return null
       }
 
@@ -133,12 +133,9 @@ const useTwilio = () => {
       console.log('[Twilio] Checking if real Twilio device can be initialized...')
       const liveDevice = await initDevice()
       if (!liveDevice) {
-        console.warn('[Twilio] Live device unavailable — falling back to simulation mode')
-        setCallStatus('ringing')
-        simTimerRef.current = setTimeout(() => {
-          setCallStatus('active')
-        }, 4500)
-        return { simulated: true }
+        setError('Live calling is unavailable. Check the Twilio configuration.')
+        setCallStatus('idle')
+        return null
       }
     }
 

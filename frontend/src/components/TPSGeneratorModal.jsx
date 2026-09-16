@@ -144,6 +144,26 @@ export default function TPSGeneratorModal({ isOpen, onClose, initialPhone = '', 
     }
   }
 
+  const handleAddAllToQueue = () => {
+    if (!results || results.length === 0) return
+    const validLeads = results.filter(l => l.phone)
+    if (validLeads.length === 0) {
+      alert('Aucun numéro valide à ajouter au Dialer.')
+      return
+    }
+    if (onAddToQueue) {
+      validLeads.forEach(lead => {
+        onAddToQueue({
+          first_name: lead.first_name,
+          last_name: lead.last_name,
+          phone: lead.phone,
+          address: lead.address,
+        })
+      })
+    }
+    alert(`✓ ${validLeads.length} contact(s) ajoutés au Dialer avec succès !`)
+  }
+
   if (!isOpen) return null
 
   return (
@@ -363,13 +383,16 @@ export default function TPSGeneratorModal({ isOpen, onClose, initialPhone = '', 
 
             {!loading && results && results.length > 0 && (
               <div className="space-y-4">
-                <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2">
                   <span className="text-xs font-mono font-bold text-neon-green">
                     📊 {results.length} RÉSULTAT(S) EXTRAIT(S) DU SYSTÈME
                   </span>
-                  <span className="text-[0.65rem] font-mono text-text-muted">
-                    Vous pouvez enregistrer n'importe quel contact ou passer un appel en 1 clic.
-                  </span>
+                  <button
+                    onClick={handleAddAllToQueue}
+                    className="px-3 py-1.5 text-xs font-mono font-bold bg-neon-cyan/20 hover:bg-neon-cyan/35 border border-neon-cyan text-neon-cyan rounded flex items-center gap-1.5 transition-all shadow-lg hover:shadow-neon-cyan/20"
+                  >
+                    <span>📞 AJOUTER TOUS LES RÉSULTATS AU DIALER ({results.filter(r => r.phone).length})</span>
+                  </button>
                 </div>
 
                 <div className="grid grid-cols-1 gap-4">

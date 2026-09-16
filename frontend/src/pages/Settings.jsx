@@ -396,8 +396,8 @@ export default function Settings() {
               required
               value={config.sip_ws_url}
               onChange={(v) => setConfig((p) => ({ ...p, sip_ws_url: v }))}
-              placeholder="wss://asterisk.votre-domaine.com:8089/ws"
-              hint="URL WebSocket de votre serveur Asterisk PJSIP, VoIPGate ou SipPortal (doit commencer par wss://)"
+              placeholder="wss://pbx.votre-domaine.com/sip-ws"
+              hint="URL WebSocket du PBX Asterisk. Ne mettez pas ici le domaine du trunk Twilio : le trunk se configure côté PBX."
             />
             <ConfigField
               label="2. NOM D'UTILISATEUR / EXTENSION SIP"
@@ -405,7 +405,7 @@ export default function Settings() {
               value={config.sip_username}
               onChange={(v) => setConfig((p) => ({ ...p, sip_username: v }))}
               placeholder="1001 ou agent1"
-              hint="Votre compte ou numéro d'extension d'agent SIP"
+              hint="Extension WebRTC d’agent créée dans Asterisk, par exemple 1001. Ce n’est pas le nom de votre trunk Twilio."
             />
             <ConfigField
               label="3. MOT DE PASSE SIP / SECRET"
@@ -420,8 +420,8 @@ export default function Settings() {
               label="4. DOMAINE SIP / REALM"
               value={config.sip_domain}
               onChange={(v) => setConfig((p) => ({ ...p, sip_domain: v }))}
-              placeholder="asterisk.local ou sip.voipgate.com"
-              hint="Domaine ou Realm SIP de votre serveur"
+              placeholder="pbx.votre-domaine.com"
+              hint="Domaine/realm du PBX Asterisk, identique au domaine dans l’URL WebSocket."
             />
             <ConfigField
               label="5. NUMÉRO D'APPEL SORTANT (CALLER ID)"

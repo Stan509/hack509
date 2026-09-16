@@ -142,7 +142,7 @@ export default function CallControls() {
             className="w-full text-center p-2 mb-3 rounded text-xs font-mono text-neon-danger border border-neon-danger flex items-center justify-between"
             style={{ background: 'rgba(255,34,68,0.15)', boxShadow: '0 0 12px rgba(255,34,68,0.3)' }}
           >
-            <span>⚠️ TWILIO: {error}</span>
+            <span>⚠️ {providerType === 'asterisk' ? 'SIP / ASTERISK' : 'TWILIO'}: {error}</span>
             <button onClick={handleHangup} className="text-[0.65rem] underline font-bold hover:text-white">RÉINITIALISER</button>
           </motion.div>
         )}

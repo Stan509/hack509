@@ -1,161 +1,197 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { Inviter, Registerer, SessionState, UserAgent } from 'sip.js'
 import { callAudio } from '../utils/callAudio.js'
 
-const useSip = (sipConfig) => {
+const holdModifier = (description) => {
+  description.sdp = description.sdp.replace(/a=sendrecv/g, 'a=sendonly')
+  return Promise.resolve(description)
+}
+
+export default function useSip(sipConfig) {
   const [isRegistered, setIsRegistered] = useState(false)
-  const [callStatus, setCallStatus] = useState('idle') // 'idle'|'connecting'|'ringing'|'active'|'holding'|'ended'
+  const [callStatus, setCallStatus] = useState('idle')
   const [isMuted, setIsMuted] = useState(false)
   const [isOnHold, setIsOnHold] = useState(false)
   const [activeCall, setActiveCall] = useState(null)
   const [error, setError] = useState(null)
+  const userAgentRef = useRef(null)
+  const registererRef = useRef(null)
+  const sessionRef = useRef(null)
+  const audioRef = useRef(null)
 
-  const wsRef = useRef(null)
-  const simTimerRef = useRef(null)
+  const removeAudio = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.srcObject = null
+      audioRef.current.remove()
+      audioRef.current = null
+    }
+  }, [])
+
+  const attachAudio = useCallback((session) => {
+    const pc = session.sessionDescriptionHandler?.peerConnection
+    if (!pc) return
+    const stream = new MediaStream()
+    pc.getReceivers().forEach(({ track }) => {
+      if (track?.kind === 'audio') stream.addTrack(track)
+    })
+    if (!audioRef.current) {
+      const audio = document.createElement('audio')
+      audio.autoplay = true
+      audio.style.display = 'none'
+      document.body.appendChild(audio)
+      audioRef.current = audio
+    }
+    audioRef.current.srcObject = stream
+    audioRef.current.play().catch(() => setError('Le navigateur a bloqué la lecture audio. Cliquez sur APPELER pour l’autoriser.'))
+  }, [])
+
+  const trackSession = useCallback((session) => {
+    sessionRef.current = session
+    setActiveCall(session)
+    session.stateChange.addListener((state) => {
+      if (state === SessionState.Established) {
+        attachAudio(session)
+        setCallStatus('active')
+        setError(null)
+      }
+      if (state === SessionState.Terminated) {
+        removeAudio()
+        sessionRef.current = null
+        setActiveCall(null)
+        setCallStatus('ended')
+        setIsMuted(false)
+        setIsOnHold(false)
+        window.setTimeout(() => setCallStatus('idle'), 1200)
+      }
+    })
+  }, [attachAudio, removeAudio])
 
   const initSipUA = useCallback(async () => {
-    if (!sipConfig || !sipConfig.ws_url || !sipConfig.username) {
+    if (!sipConfig?.ws_url || !sipConfig?.username || !sipConfig?.password || !sipConfig?.domain) {
       setIsRegistered(false)
-      return null
+      return
     }
-
     try {
-      console.log('[SIP] Initializing Native WebRTC WebSocket SIP Client for', sipConfig.username, 'at', sipConfig.ws_url)
-
-      // Connect WebRTC WebSocket to Asterisk / VoIPGate / SipPortal
-      if (wsRef.current) {
-        try { wsRef.current.close() } catch (e) {}
-      }
-
-      const ws = new WebSocket(sipConfig.ws_url, ['sip'])
-      wsRef.current = ws
-
-      ws.onopen = () => {
-        console.log('[SIP] WebSocket connected to Asterisk server!')
-        setIsRegistered(true)
-        setError(null)
-        // Send REGISTER SIP message frame
-        const callId = Math.random().toString(36).substring(2)
-        const regMsg = `REGISTER sip:${sipConfig.domain || 'asterisk.local'} SIP/2.0\r\nVia: SIP/2.0/WSS df78s9df8s.invalid;branch=z9hG4bK${callId}\r\nFrom: <sip:${sipConfig.username}@${sipConfig.domain || 'asterisk.local'}>;tag=tag${callId}\r\nTo: <sip:${sipConfig.username}@${sipConfig.domain || 'asterisk.local'}>\r\nCall-ID: ${callId}@asterisk.local\r\nCSeq: 1 REGISTER\r\nContact: <sip:${sipConfig.username}@df78s9df8s.invalid;transport=ws>\r\nExpires: 3600\r\nContent-Length: 0\r\n\r\n`
-        try { ws.send(regMsg) } catch (e) {}
-      }
-
-      ws.onerror = (err) => {
-        console.warn('[SIP] WebSocket connection error:', err)
-        setError('Erreur de connexion WebSocket Asterisk / SIP')
-        setIsRegistered(false)
-      }
-
-      ws.onclose = () => {
-        setIsRegistered(false)
-      }
-
-      ws.onmessage = (event) => {
-        const msg = event.data || ''
-        if (msg.includes('200 OK')) {
-          setIsRegistered(true)
-          setError(null)
-        }
-      }
-
-      return ws
+      const url = new URL(sipConfig.ws_url)
+      if (!['ws:', 'wss:'].includes(url.protocol)) throw new Error('L’URL SIP doit commencer par ws:// ou wss://')
+      await userAgentRef.current?.stop()
+      const ua = new UserAgent({
+        uri: UserAgent.makeURI(`sip:${encodeURIComponent(sipConfig.username)}@${sipConfig.domain}`),
+        authorizationUsername: sipConfig.username,
+        authorizationPassword: sipConfig.password,
+        transportOptions: { server: sipConfig.ws_url },
+        delegate: {
+          onDisconnect: (reason) => {
+            setIsRegistered(false)
+            if (reason) setError('Connexion au PBX interrompue.')
+          },
+          onInvite: (invitation) => {
+            trackSession(invitation)
+            setCallStatus('ringing')
+            setError('Appel entrant reçu. La prise d’appel entrant doit être ajoutée au poste agent.')
+          },
+        },
+      })
+      userAgentRef.current = ua
+      await ua.start()
+      const registerer = new Registerer(ua)
+      registererRef.current = registerer
+      registerer.stateChange.addListener((state) => {
+        const registered = String(state) === 'Registered'
+        setIsRegistered(registered)
+        if (String(state) === 'Unregistered') setError('Enregistrement SIP refusé. Vérifiez URL, extension et secret.')
+      })
+      await registerer.register()
     } catch (err) {
-      console.warn('[SIP] Init failed:', err)
-      setError(`Erreur SIP: ${err.message}`)
       setIsRegistered(false)
-      return null
+      setError(`Erreur SIP : ${err.message}`)
     }
-  }, [sipConfig])
+  }, [sipConfig, trackSession])
 
   const makeCall = useCallback(async (to) => {
     setError(null)
     setIsMuted(false)
     setIsOnHold(false)
-
-    if (!sipConfig || !sipConfig.ws_url) {
-      setError('Serveur Asterisk/SIP non configuré')
+    if (!userAgentRef.current || !isRegistered) {
+      setError('PBX non enregistré. Vérifiez la configuration SIP et attendez le statut READY.')
       return null
     }
-
-    setCallStatus('connecting')
-    simTimerRef.current = setTimeout(() => setCallStatus('ringing'), 1000)
-    simTimerRef.current = setTimeout(() => setCallStatus('active'), 3500)
-
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      const callId = Math.random().toString(36).substring(2)
-      const inviteMsg = `INVITE sip:${to}@${sipConfig.domain || 'asterisk.local'} SIP/2.0\r\nVia: SIP/2.0/WSS df78s9df8s.invalid;branch=z9hG4bK${callId}\r\nFrom: <sip:${sipConfig.username}@${sipConfig.domain || 'asterisk.local'}>;tag=tag${callId}\r\nTo: <sip:${to}@${sipConfig.domain || 'asterisk.local'}>\r\nCall-ID: ${callId}@asterisk.local\r\nCSeq: 1 INVITE\r\nContent-Length: 0\r\n\r\n`
-      try { wsRef.current.send(inviteMsg) } catch (e) {}
+    const target = UserAgent.makeURI(`sip:${to}@${sipConfig.domain}`)
+    if (!target) {
+      setError('Numéro ou extension SIP invalide.')
+      return null
     }
-
-    return { simulated: false, target: to }
-  }, [sipConfig])
-
-  const hangup = useCallback(() => {
-    clearTimeout(simTimerRef.current)
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      const callId = Math.random().toString(36).substring(2)
-      const byeMsg = `BYE sip:${sipConfig?.domain || 'asterisk.local'} SIP/2.0\r\nVia: SIP/2.0/WSS df78s9df8s.invalid;branch=z9hG4bK${callId}\r\nCSeq: 2 BYE\r\nContent-Length: 0\r\n\r\n`
-      try { wsRef.current.send(byeMsg) } catch (e) {}
+    try {
+      const inviter = new Inviter(userAgentRef.current, target, { sessionDescriptionHandlerOptions: { constraints: { audio: true, video: false } } })
+      trackSession(inviter)
+      setCallStatus('connecting')
+      await inviter.invite()
+      return inviter
+    } catch (err) {
+      setCallStatus('idle')
+      setError(`Impossible de lancer l’appel SIP : ${err.message}`)
+      return null
     }
-    setActiveCall(null)
-    setCallStatus('ended')
-    setIsMuted(false)
-    setIsOnHold(false)
-    setTimeout(() => setCallStatus('idle'), 2000)
-  }, [sipConfig])
+  }, [isRegistered, sipConfig, trackSession])
 
-  const hold = useCallback(() => {
-    setIsOnHold((prev) => !prev)
-    setCallStatus((prev) => (prev === 'active' ? 'holding' : 'active'))
+  const hangup = useCallback(async () => {
+    const session = sessionRef.current
+    if (!session) return
+    try {
+      if (session.state === SessionState.Established) await session.bye()
+      else await session.cancel()
+    } catch (err) {
+      setError(`Impossible de raccrocher : ${err.message}`)
+    }
   }, [])
 
-  const mute = useCallback((forceMuted) => {
-    const newMuted = forceMuted !== undefined ? forceMuted : !isMuted
-    setIsMuted(newMuted)
+  const hold = useCallback(async () => {
+    const session = sessionRef.current
+    if (!session || session.state !== SessionState.Established) return
+    try {
+      await session.invite(isOnHold ? {} : { sessionDescriptionHandlerModifiers: [holdModifier] })
+      setIsOnHold((value) => !value)
+      setCallStatus((value) => (value === 'holding' ? 'active' : 'holding'))
+    } catch (err) {
+      setError(`Mise en attente refusée par le PBX : ${err.message}`)
+    }
+  }, [isOnHold])
+
+  const mute = useCallback((forced) => {
+    const value = forced ?? !isMuted
+    sessionRef.current?.sessionDescriptionHandler?.peerConnection?.getSenders().forEach((sender) => {
+      if (sender.track?.kind === 'audio') sender.track.enabled = !value
+    })
+    setIsMuted(value)
   }, [isMuted])
 
-  const sendDigit = useCallback((digit) => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      const infoMsg = `INFO sip:${sipConfig?.domain || 'asterisk.local'} SIP/2.0\r\nSignal=${digit}\r\nDuration=160\r\n\r\n`
-      try { wsRef.current.send(infoMsg) } catch (e) {}
+  const sendDigit = useCallback(async (digit) => {
+    const session = sessionRef.current
+    if (!session || session.state !== SessionState.Established) return
+    try {
+      await session.info({ requestOptions: { body: { contentDisposition: 'render', contentType: 'application/dtmf-relay', content: `Signal=${digit}\r\nDuration=160` } } })
+    } catch (err) {
+      setError(`DTMF non envoyé : ${err.message}`)
     }
-  }, [sipConfig])
-
-  useEffect(() => {
-    if (callStatus === 'connecting' || callStatus === 'ringing') {
-      callAudio.startDialingSound()
-    } else if (callStatus === 'active') {
-      callAudio.playConnectedSound()
-    } else if (callStatus === 'ended') {
-      callAudio.playEndedSound()
-    } else if (callStatus === 'idle') {
-      callAudio.stopDialingSound()
-    }
-  }, [callStatus])
+  }, [])
 
   useEffect(() => {
     initSipUA()
     return () => {
-      clearTimeout(simTimerRef.current)
       callAudio.stopDialingSound()
-      if (wsRef.current) {
-        try { wsRef.current.close() } catch (e) {}
-      }
+      removeAudio()
+      registererRef.current?.unregister().catch(() => {})
+      userAgentRef.current?.stop().catch(() => {})
+      registererRef.current = null
+      userAgentRef.current = null
     }
-  }, [initSipUA])
+  }, [initSipUA, removeAudio])
 
-  return {
-    isRegistered,
-    callStatus,
-    isMuted,
-    isOnHold,
-    activeCall,
-    error,
-    makeCall,
-    hangup,
-    hold,
-    mute,
-    sendDigit,
-  }
+  useEffect(() => {
+    if (callStatus === 'connecting' || callStatus === 'ringing') callAudio.startDialingSound()
+    else if (callStatus === 'active') callAudio.playConnectedSound()
+    else if (callStatus === 'ended' || callStatus === 'idle') callAudio.stopDialingSound()
+  }, [callStatus])
+
+  return { isRegistered, callStatus, isMuted, isOnHold, activeCall, error, makeCall, hangup, hold, mute, sendDigit }
 }
-
-export default useSip

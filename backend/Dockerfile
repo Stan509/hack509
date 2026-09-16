@@ -12,4 +12,4 @@ COPY . /app/
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "python init_db.py && gunicorn --bind 0.0.0.0:8000 hack509.wsgi:application"]
+CMD ["sh", "-c", "python manage.py migrate --noinput && python manage.py collectstatic --noinput && gunicorn --bind 0.0.0.0:8000 --workers 2 --access-logfile - --error-logfile - hack509.wsgi:application"]

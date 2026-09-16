@@ -116,9 +116,15 @@ def extract_name_and_loc_from_url(url):
 
 def lookup_tps_fps(search_type='phone', phone='', name='', location='', provider='all'):
     """
-    Perform multi-criteria TPS & FPS search and return structured lead objects.
-    Guarantees non-empty phone numbers and multi-card result lists for name searches.
+    Third-party people-search enrichment is disabled.
+
+    The old implementation fabricated fallback identities, phone numbers and
+    addresses. An empty result is safer than presenting unverified data as real.
     """
+    logger.info("Third-party TPS/FPS lookup requested but disabled")
+    return []
+
+    # Legacy code below is intentionally unreachable.
     if phone and not any(c.isdigit() for c in phone) and not name:
         name = phone
         phone = ''
@@ -341,6 +347,9 @@ def generate_candidate_lead(search_type, phone, name, location):
     ]
 
 def bulk_lookup_tps_fps(phones, provider='all'):
+    logger.info("Third-party TPS/FPS bulk lookup requested but disabled")
+    return {'found': [], 'not_found': [], 'results': [], 'found_count': 0, 'not_found_count': 0, 'total': 0}
+
     found = []
     not_found = []
     combined = []

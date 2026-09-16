@@ -5,6 +5,7 @@ import uuid
 import logging
 import os
 import json
+from urllib.parse import urlparse
 
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -290,9 +291,21 @@ class TwilioTestView(APIView):
                     'message': 'Configuration Asterisk / SIP incomplète. L\'URL WebSocket et le Nom d\'utilisateur SIP sont requis.'
                 }, status=status.HTTP_400_BAD_REQUEST)
 
+            parsed_url = urlparse(ws_url)
+            if parsed_url.scheme not in ('ws', 'wss') or not parsed_url.netloc:
+                return Response({
+                    'success': False,
+                    'message': 'URL WebSocket invalide. Utilisez ws://127.0.0.1/sip-ws en local ou wss://pbx.votre-domaine.com/sip-ws en production.'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            if not cfg.get('sip_password'):
+                return Response({
+                    'success': False,
+                    'message': 'Le secret de l’extension SIP est requis pour effectuer un enregistrement WebRTC.'
+                }, status=status.HTTP_400_BAD_REQUEST)
             return Response({
                 'success': True,
-                'message': f'Configuration Asterisk / SIP valide ! WebSocket: {ws_url} | Utilisateur SIP: {user} | Domaine: {cfg.get("sip_domain", "défaut")}'
+                'verified': False,
+                'message': 'Configuration SIP enregistrée. L’enregistrement réel sera confirmé par le statut READY du moteur Asterisk dans l’écran Appels.'
             })
 
         # Twilio test logic

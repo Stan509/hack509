@@ -2,6 +2,8 @@
 .env
 *.env
 backend/.env
+backend/.twilio_saved_config.json
+backend/.twilio_saved_config.json
 
 # Databases & SQLite
 *.sqlite3
