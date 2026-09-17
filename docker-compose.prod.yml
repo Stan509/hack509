@@ -31,6 +31,8 @@ services:
 
   asterisk:
     restart: unless-stopped
+    volumes:
+      - /opt/hack509/secrets/pjsip_secrets.conf:/etc/asterisk/pjsip_secrets.conf:ro
     logging:
       driver: "json-file"
       options:
