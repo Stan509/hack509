@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import RFB from '@novnc/novnc'
 import { api } from '../contexts/AuthContext.jsx'
 import CapturePreviewModal from './CapturePreviewModal.jsx'
 
@@ -13,13 +14,13 @@ export default function EmbeddedBrowserModal({
 }) {
   const [sessionTicket, setSessionTicket] = useState('')
   const [targetSite, setTargetSite] = useState(initialTarget) // 'tps' | 'fps'
-  const [browserReady, setBrowserReady] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [navigating, setNavigating] = useState(false)
   const [proxyActive, setProxyActive] = useState(false)
   const [proxyProvider, setProxyProvider] = useState('Connexion directe')
   const [copiedStatus, setCopiedStatus] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
+  const [connectionStatus, setConnectionStatus] = useState('Initialisation du navigateur…')
+  const [rfbConnected, setRfbConnected] = useState(false)
+  const [navigating, setNavigating] = useState(false)
   const [activeUrl, setActiveUrl] = useState('')
 
   // Capture workflow state
@@ -27,27 +28,35 @@ export default function EmbeddedBrowserModal({
   const [capturedLeads, setCapturedLeads] = useState([])
   const [previewOpen, setPreviewOpen] = useState(false)
 
-  const iframeRef = useRef(null)
+  const canvasContainerRef = useRef(null)
+  const rfbRef = useRef(null)
+  const reconnectAttemptsRef = useRef(0)
+  const connectTimeoutRef = useRef(null)
+  const isConnectingRef = useRef(false)
 
-  // VNC stream URL gated with session ticket
-  const vncClientUrl = sessionTicket
-    ? `/browser/vnc.html?autoconnect=true&resize=scale&reconnect=true&quality=7&compression=2&ticket=${encodeURIComponent(sessionTicket)}&path=websockify%3Fticket%3D${encodeURIComponent(sessionTicket)}`
-    : ''
-
-  useEffect(() => {
-    if (isOpen) {
-      setTargetSite(initialTarget)
-      setErrorMessage('')
-      initBrowserSession(initialTarget)
-      if (initialPhone) {
-        copyNumberToClipboard(initialPhone, initialTarget)
-      }
-    } else {
-      setBrowserReady(false)
-      setSessionTicket('')
-      setPreviewOpen(false)
+  // Disconnect & cleanup RFB instance
+  const cleanupRfb = useCallback(() => {
+    if (connectTimeoutRef.current) {
+      clearTimeout(connectTimeoutRef.current)
+      connectTimeoutRef.current = null
     }
-  }, [isOpen, initialTarget, initialPhone])
+    if (rfbRef.current) {
+      try {
+        rfbRef.current.removeEventListener('connect', () => {})
+        rfbRef.current.removeEventListener('disconnect', () => {})
+        rfbRef.current.removeEventListener('securityfailure', () => {})
+        rfbRef.current.disconnect()
+      } catch (e) {
+        console.warn('Error disconnecting RFB:', e)
+      }
+      rfbRef.current = null
+    }
+    if (canvasContainerRef.current) {
+      canvasContainerRef.current.innerHTML = ''
+    }
+    isConnectingRef.current = false
+    setRfbConnected(false)
+  }, [])
 
   // Heartbeat to keep session lock active
   useEffect(() => {
@@ -62,15 +71,167 @@ export default function EmbeddedBrowserModal({
     return () => clearInterval(interval)
   }, [isOpen, sessionTicket])
 
+  // Establish direct RFB connection to Chromium via Websockify
+  const connectRfb = useCallback((ticket) => {
+    if (!canvasContainerRef.current || isConnectingRef.current) return
+    cleanupRfb()
+
+    isConnectingRef.current = true
+    setConnectionStatus('Connexion à Chromium…')
+    setErrorMessage('')
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsUrl = `${protocol}//${window.location.host}/websockify?ticket=${encodeURIComponent(ticket)}`
+
+    try {
+      const rfb = new RFB(canvasContainerRef.current, wsUrl, {
+        wsProtocols: ['binary']
+      })
+
+      // Expected RFB viewport configuration
+      rfb.scaleViewport = true
+      rfb.resizeSession = true
+      rfb.clipViewport = false
+      rfb.viewOnly = false
+      rfb.focusOnClick = true
+      rfb.showDotCursor = true
+
+      // Timeout if connection takes longer than 15s
+      connectTimeoutRef.current = setTimeout(() => {
+        if (!rfbConnected && rfbRef.current === rfb) {
+          setConnectionStatus('Navigateur indisponible')
+          setErrorMessage('Délai de connexion dépassé. Le service distant met trop de temps à répondre.')
+          cleanupRfb()
+        }
+      }, 15000)
+
+      rfb.addEventListener('connect', () => {
+        if (connectTimeoutRef.current) {
+          clearTimeout(connectTimeoutRef.current)
+          connectTimeoutRef.current = null
+        }
+        isConnectingRef.current = false
+        reconnectAttemptsRef.current = 0
+        setRfbConnected(true)
+        setConnectionStatus('Navigateur connecté')
+        setErrorMessage('')
+
+        // Auto sync clipboard with target phone number
+        if (initialPhone) {
+          try {
+            rfb.clipboardPasteFrom(initialPhone)
+          } catch (e) {
+            console.debug('Clipboard sync notice:', e)
+          }
+        }
+      })
+
+      rfb.addEventListener('disconnect', (e) => {
+        if (connectTimeoutRef.current) {
+          clearTimeout(connectTimeoutRef.current)
+          connectTimeoutRef.current = null
+        }
+        isConnectingRef.current = false
+        setRfbConnected(false)
+
+        if (e && e.detail && e.detail.clean) {
+          setConnectionStatus('Session fermée')
+        } else {
+          // Reconnect logic with max 3 attempts
+          if (reconnectAttemptsRef.current < 3) {
+            reconnectAttemptsRef.current += 1
+            setConnectionStatus(`Reconnexion… (${reconnectAttemptsRef.current}/3)`)
+            setTimeout(() => {
+              if (isOpen && ticket) {
+                connectRfb(ticket)
+              }
+            }, 2000)
+          } else {
+            setConnectionStatus('Connexion refusée')
+            setErrorMessage('La connexion WebSocket au navigateur distant a été interrompue.')
+          }
+        }
+      })
+
+      rfb.addEventListener('securityfailure', (e) => {
+        isConnectingRef.current = false
+        setRfbConnected(false)
+        setConnectionStatus('Connexion refusée')
+        setErrorMessage('Échec d’authentification de la session navigateur.')
+      })
+
+      rfbRef.current = rfb
+    } catch (err) {
+      isConnectingRef.current = false
+      console.error('RFB init error:', err)
+      setConnectionStatus('Navigateur indisponible')
+      setErrorMessage(err.message || 'Impossible d’initialiser le client RFB.')
+    }
+  }, [cleanupRfb, initialPhone, isOpen, rfbConnected])
+
+  // Initialize browser session on backend and launch RFB
+  const initBrowserSession = useCallback(async (target) => {
+    setConnectionStatus('Initialisation du navigateur…')
+    setErrorMessage('')
+    setRfbConnected(false)
+    reconnectAttemptsRef.current = 0
+
+    try {
+      const resp = await api.post('/api/browser/session/', { target })
+      if (resp.data && resp.data.success) {
+        const ticket = resp.data.ticket || ''
+        setSessionTicket(ticket)
+        setProxyActive(Boolean(resp.data.proxy_active))
+        setProxyProvider(resp.data.proxy_provider || 'Connexion directe')
+        setActiveUrl(resp.data.target_url || '')
+
+        // Connect RFB
+        connectRfb(ticket)
+      } else {
+        setConnectionStatus('Navigateur indisponible')
+        setErrorMessage(resp.data?.error || 'Serveur du navigateur indisponible.')
+      }
+    } catch (err) {
+      console.warn('Browser session init error:', err)
+      if (err.response?.status === 423 || err.response?.data?.locked) {
+        setConnectionStatus('Connexion refusée')
+        setErrorMessage(err.response?.data?.error || 'Le navigateur est actuellement utilisé par un autre opérateur.')
+      } else {
+        setConnectionStatus('Navigateur indisponible')
+        setErrorMessage(err.response?.data?.error || 'Serveur du navigateur indisponible.')
+      }
+    }
+  }, [connectRfb])
+
+  useEffect(() => {
+    if (isOpen) {
+      setTargetSite(initialTarget)
+      setErrorMessage('')
+      initBrowserSession(initialTarget)
+      if (initialPhone) {
+        copyNumberToClipboard(initialPhone, initialTarget)
+      }
+    } else {
+      cleanupRfb()
+      setSessionTicket('')
+      setPreviewOpen(false)
+      setRfbConnected(false)
+    }
+    return () => {
+      cleanupRfb()
+    }
+  }, [isOpen, initialTarget, initialPhone, initBrowserSession, cleanupRfb])
+
   const handleClose = async () => {
+    cleanupRfb()
     try {
       await api.delete('/api/browser/session/')
     } catch (err) {
       console.warn('Close session error:', err)
     }
     setSessionTicket('')
-    setBrowserReady(false)
     setPreviewOpen(false)
+    setRfbConnected(false)
     onClose()
   }
 
@@ -83,6 +244,14 @@ export default function EmbeddedBrowserModal({
         setCopiedStatus(`Numéro copié — collez-le dans la recherche ${siteLabel}`)
       } else {
         fallbackCopy(phoneNum, siteLabel)
+      }
+      // Also send to remote RFB clipboard
+      if (rfbRef.current) {
+        try {
+          rfbRef.current.clipboardPasteFrom(phoneNum)
+        } catch (e) {
+          console.debug('Remote clipboard paste:', e)
+        }
       }
     } catch {
       fallbackCopy(phoneNum, siteLabel)
@@ -103,36 +272,9 @@ export default function EmbeddedBrowserModal({
       document.body.removeChild(textArea)
       setCopiedStatus(`Numéro copié — collez-le dans la recherche ${siteLabel}`)
     } catch {
-      setCopiedStatus(`Presse-papiers indisponible — utilisez le bouton Copier ci-dessus`)
+      setCopiedStatus('Presse-papiers indisponible — utilisez le bouton Copier ci-dessus')
     }
   }
-
-  const initBrowserSession = async (target) => {
-    setLoading(true)
-    setErrorMessage('')
-    try {
-      const resp = await api.post('/api/browser/session/', { target })
-      if (resp.data && resp.data.success) {
-        setSessionTicket(resp.data.ticket || '')
-        setBrowserReady(true)
-        setProxyActive(Boolean(resp.data.proxy_active))
-        setProxyProvider(resp.data.proxy_provider || 'Connexion directe')
-        setActiveUrl(resp.data.target_url || '')
-      } else {
-        setErrorMessage(resp.data?.error || 'Serveur du navigateur indisponible.')
-      }
-    } catch (err) {
-      console.warn('Browser session init:', err)
-      if (err.response?.status === 423 || err.response?.data?.locked) {
-        setErrorMessage(err.response?.data?.error || "Le navigateur est actuellement utilisé par un autre opérateur.")
-      } else {
-        setErrorMessage(err.response?.data?.error || 'Serveur du navigateur indisponible.')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }
-
 
   const handleBrowserAction = async (action) => {
     setNavigating(true)
@@ -147,7 +289,6 @@ export default function EmbeddedBrowserModal({
 
   const handleSwitchSite = async (newSite) => {
     setTargetSite(newSite)
-    setLoading(true)
     try {
       await api.post('/api/browser/session/', { target: newSite })
       if (initialPhone) {
@@ -155,8 +296,6 @@ export default function EmbeddedBrowserModal({
       }
     } catch (err) {
       console.error('Switch site error:', err)
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -175,7 +314,7 @@ export default function EmbeddedBrowserModal({
       }
     } catch (err) {
       console.error('Capture error:', err)
-      alert("Erreur lors de la capture : " + (err.response?.data?.error || err.message))
+      alert('Erreur lors de la capture : ' + (err.response?.data?.error || err.message))
     } finally {
       setCapturing(false)
     }
@@ -225,6 +364,22 @@ export default function EmbeddedBrowserModal({
 
               {/* Status and Proxy indicators */}
               <div className="flex items-center gap-2">
+                {/* Connection Status Badge */}
+                <div
+                  className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-sm border text-[0.65rem] font-mono"
+                  style={{
+                    borderColor: rfbConnected ? '#00ff66' : '#ff9900',
+                    color: rfbConnected ? '#00ff66' : '#ff9900',
+                    background: rfbConnected ? 'rgba(0,255,102,0.1)' : 'rgba(255,153,0,0.1)',
+                  }}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${rfbConnected ? 'bg-neon-green' : 'bg-neon-warn animate-ping'}`}
+                  />
+                  <span>{connectionStatus}</span>
+                </div>
+
+                {/* Proxy State Badge */}
                 <div
                   className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-sm border text-[0.65rem] font-mono"
                   style={{
@@ -244,7 +399,6 @@ export default function EmbeddedBrowserModal({
                 >
                   ✕ FERMER
                 </button>
-
               </div>
             </div>
 
@@ -368,42 +522,44 @@ export default function EmbeddedBrowserModal({
               )}
             </div>
 
-            {/* Chromium Display Window (noVNC HTML5 Canvas stream) */}
-            <div className="flex-1 relative bg-black/95 overflow-hidden flex flex-col items-center justify-center">
-              {loading && (
-                <div className="absolute inset-0 bg-black/85 backdrop-blur-sm z-20 flex flex-col items-center justify-center gap-3">
-                  <div className="w-8 h-8 border-2 border-neon-cyan border-t-transparent rounded-full animate-spin" />
+            {/* Chromium Display Window (Direct RFB Canvas Container) */}
+            <div className="flex-1 relative bg-black overflow-hidden flex items-center justify-center">
+              {/* Spinner & Loading State */}
+              {!rfbConnected && !errorMessage && (
+                <div className="absolute inset-0 bg-black/90 z-20 flex flex-col items-center justify-center gap-3">
+                  <div className="w-9 h-9 border-2 border-neon-cyan border-t-transparent rounded-full animate-spin" />
                   <div className="text-neon-cyan text-xs font-mono tracking-wider">
-                    CONNEXION AU NAVIGATEUR CHROMIUM DISTANT...
+                    {connectionStatus.toUpperCase()}
+                  </div>
+                  <div className="text-text-muted text-[0.7rem] font-mono">
+                    Initialisation du flux RFB direct...
                   </div>
                 </div>
               )}
 
-              {/* noVNC Web App Iframe */}
-              <iframe
-                ref={iframeRef}
-                src={vncClientUrl}
-                title="Remote Chromium Browser Session"
-                className="w-full h-full border-0"
-                sandbox="allow-scripts allow-same-origin allow-forms"
-                onLoad={() => setLoading(false)}
+              {/* Dedicated RFB Screen Canvas Mount */}
+              <div
+                ref={canvasContainerRef}
+                className="w-full h-full flex items-center justify-center relative overflow-hidden bg-black select-none"
+                style={{ cursor: 'default' }}
               />
 
+              {/* Error & Disconnect Overlay */}
               {errorMessage && (
                 <div className="absolute inset-0 bg-black/95 z-30 flex flex-col items-center justify-center p-6 text-center space-y-4">
-                  <div className="text-3xl">⚠️</div>
+                  <div className="text-4xl">⚠️</div>
                   <div className="text-neon-danger font-mono font-bold text-sm">
                     {errorMessage}
                   </div>
                   <div className="text-text-muted font-mono text-xs max-w-md">
-                    Vérifiez que le conteneur browser est démarré sur le serveur.
+                    Statut actuel : {connectionStatus}
                   </div>
                   <button
                     type="button"
                     onClick={() => initBrowserSession(targetSite)}
-                    className="btn-cyber px-4 py-2 text-xs font-mono font-bold rounded-sm border-neon-cyan text-neon-cyan"
+                    className="btn-cyber px-5 py-2 text-xs font-mono font-bold rounded-sm border-neon-cyan text-neon-cyan hover:bg-neon-cyan/20 cursor-pointer"
                   >
-                    ⟳ RÉESSAYER LA CONNEXION
+                    ⟳ RÉESSAYER
                   </button>
                 </div>
               )}

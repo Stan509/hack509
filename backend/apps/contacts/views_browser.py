@@ -77,7 +77,7 @@ class BrowserSessionView(APIView):
         active_page = get_active_page()
         browser_ready = bool(active_page is not None)
 
-        return Response({
+        resp = Response({
             'success': True,
             'ticket': ticket,
             'browser_ready': browser_ready,
@@ -86,6 +86,15 @@ class BrowserSessionView(APIView):
             'proxy_provider': proxy_cfg.provider if proxy_active else 'Connexion directe (IP Serveur)',
             'nav_result': nav_res,
         }, status=status.HTTP_200_OK)
+        resp.set_cookie(
+            'browser_ticket',
+            ticket,
+            max_age=3600,
+            secure=True,
+            httponly=True,
+            samesite='Lax'
+        )
+        return resp
 
     def delete(self, request):
         """Release session lock and clear tab."""
@@ -98,7 +107,9 @@ class BrowserSessionView(APIView):
 
         control_browser_action('stop')
         navigate_to_url('about:blank')
-        return Response({'success': True, 'message': 'Session libérée avec succès.'})
+        resp = Response({'success': True, 'message': 'Session libérée avec succès.'})
+        resp.delete_cookie('browser_ticket')
+        return resp
 
 
 class BrowserSessionHeartbeatView(APIView):
@@ -298,6 +309,17 @@ class BrowserAuthCheckView(APIView):
         q_params = urllib.parse.parse_qs(parsed.query)
 
         ticket = (q_params.get('ticket') or [''])[0]
+        if not ticket:
+            ticket = request.COOKIES.get('browser_ticket', '')
+        if not ticket:
+            cookie_header = request.META.get('HTTP_COOKIE', '')
+            for part in cookie_header.split(';'):
+                if '=' in part:
+                    k, v = part.strip().split('=', 1)
+                    if k == 'browser_ticket':
+                        ticket = v
+                        break
+
         token = (q_params.get('token') or [''])[0]
 
         # 1. Check valid session lock ticket
