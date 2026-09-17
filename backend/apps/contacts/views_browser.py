@@ -49,12 +49,28 @@ class BrowserSessionView(APIView):
                 'error': f"Le navigateur est actuellement utilisé par l'opérateur {other_name}. Veuillez patienter qu'il termine."
             }, status=status.HTTP_423_LOCKED)
 
-        # Acquire lock & generate ticket
-        ticket = uuid.uuid4().hex
-        lock.active_user = request.user
-        lock.session_ticket = ticket
-        lock.last_heartbeat = timezone.now()
-        lock.save()
+        # Acquire lock & reuse or generate ticket
+        force_new = bool(request.data.get('force_new_ticket'))
+        now = timezone.now()
+        import datetime
+
+        ticket_valid = (
+            lock.active_user_id == request.user.id
+            and bool(lock.session_ticket)
+            and lock.last_heartbeat
+            and (now - lock.last_heartbeat < datetime.timedelta(seconds=90))
+        )
+
+        if ticket_valid and not force_new:
+            ticket = lock.session_ticket
+            lock.last_heartbeat = now
+            lock.save(update_fields=['last_heartbeat'])
+        else:
+            ticket = uuid.uuid4().hex
+            lock.active_user = request.user
+            lock.session_ticket = ticket
+            lock.last_heartbeat = now
+            lock.save()
 
         target = request.data.get('target', 'tps').lower()
         custom_url = request.data.get('url', '')
@@ -303,40 +319,55 @@ class BrowserAuthCheckView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
+        import datetime
         auth_header = request.META.get('HTTP_AUTHORIZATION', '')
-        orig_uri = request.META.get('HTTP_X_ORIGINAL_URI', request.get_full_path())
-        parsed = urllib.parse.urlparse(orig_uri)
-        q_params = urllib.parse.parse_qs(parsed.query)
 
-        ticket = (q_params.get('ticket') or [''])[0]
+        # 1. Primary: X-Browser-Ticket header forwarded by Nginx
+        ticket = request.META.get('HTTP_X_BROWSER_TICKET', '').strip()
+
+        # 2. Secondary: Query string from X-Original-URI or request URI
+        orig_uri = request.META.get('HTTP_X_ORIGINAL_URI', request.get_full_path())
+        if not ticket and orig_uri:
+            parsed = urllib.parse.urlparse(orig_uri)
+            q_params = urllib.parse.parse_qs(parsed.query)
+            ticket = (q_params.get('ticket') or [''])[0].strip()
+
+        # 3. Tertiary: Cookie browser_ticket
         if not ticket:
-            ticket = request.COOKIES.get('browser_ticket', '')
+            ticket = (request.COOKIES.get('browser_ticket') or '').strip()
         if not ticket:
             cookie_header = request.META.get('HTTP_COOKIE', '')
             for part in cookie_header.split(';'):
                 if '=' in part:
                     k, v = part.strip().split('=', 1)
                     if k == 'browser_ticket':
-                        ticket = v
+                        ticket = v.strip()
                         break
 
-        token = (q_params.get('token') or [''])[0]
-
-        # 1. Check valid session lock ticket
+        # Validate ticket against active session lock
         if ticket:
             lock = BrowserSessionLock.objects.first()
-            if lock and lock.session_ticket == ticket and not lock.is_locked_by_other(lock.active_user):
+            if lock and lock.session_ticket and lock.session_ticket == ticket:
+                now = timezone.now()
+                # If heartbeat is older than 90 seconds, reject expired session
+                if lock.last_heartbeat and (now - lock.last_heartbeat > datetime.timedelta(seconds=90)):
+                    logger.warning("Browser auth check rejected: ticket has expired.")
+                    return HttpResponse("Session ticket expired", status=403)
                 return HttpResponse("OK", status=200)
 
-        # 2. Check Bearer token
-        raw_token = token
-        if not raw_token and auth_header.startswith('Bearer '):
-            raw_token = auth_header.split(' ', 1)[1].strip()
+        # 4. Fallback: Bearer token check
+        token = ''
+        if orig_uri:
+            parsed = urllib.parse.urlparse(orig_uri)
+            q_params = urllib.parse.parse_qs(parsed.query)
+            token = (q_params.get('token') or [''])[0].strip()
+        if not token and auth_header.startswith('Bearer '):
+            token = auth_header.split(' ', 1)[1].strip()
 
-        if raw_token:
+        if token:
             from rest_framework_simplejwt.tokens import AccessToken
             try:
-                validated = AccessToken(raw_token)
+                validated = AccessToken(token)
                 user_id = validated.get('user_id')
                 lock = BrowserSessionLock.objects.first()
                 if lock and (lock.active_user_id == user_id or not lock.active_user):

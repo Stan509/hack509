@@ -30,9 +30,14 @@ export default function EmbeddedBrowserModal({
 
   const canvasContainerRef = useRef(null)
   const rfbRef = useRef(null)
+  const connectingRef = useRef(false)
+  const sessionTicketRef = useRef('')
   const reconnectAttemptsRef = useRef(0)
   const connectTimeoutRef = useRef(null)
-  const isConnectingRef = useRef(false)
+  const isOpenRef = useRef(isOpen)
+  isOpenRef.current = isOpen
+  const rfbConnectedRef = useRef(rfbConnected)
+  rfbConnectedRef.current = rfbConnected
 
   // Disconnect & cleanup RFB instance
   const cleanupRfb = useCallback(() => {
@@ -42,25 +47,19 @@ export default function EmbeddedBrowserModal({
     }
     if (rfbRef.current) {
       try {
-        rfbRef.current.removeEventListener('connect', () => {})
-        rfbRef.current.removeEventListener('disconnect', () => {})
-        rfbRef.current.removeEventListener('securityfailure', () => {})
         rfbRef.current.disconnect()
       } catch (e) {
         console.warn('Error disconnecting RFB:', e)
       }
       rfbRef.current = null
     }
-    if (canvasContainerRef.current) {
-      canvasContainerRef.current.innerHTML = ''
-    }
-    isConnectingRef.current = false
+    connectingRef.current = false
     setRfbConnected(false)
   }, [])
 
-  // Heartbeat to keep session lock active
+  // Heartbeat to keep session lock active only after connection is established
   useEffect(() => {
-    if (!isOpen || !sessionTicket) return
+    if (!isOpen || !sessionTicket || !rfbConnected) return
     const interval = setInterval(async () => {
       try {
         await api.post('/api/browser/session/heartbeat/', { ticket: sessionTicket })
@@ -69,26 +68,32 @@ export default function EmbeddedBrowserModal({
       }
     }, 20000)
     return () => clearInterval(interval)
-  }, [isOpen, sessionTicket])
+  }, [isOpen, sessionTicket, rfbConnected])
 
   // Establish direct RFB connection to Chromium via Websockify
   const connectRfb = useCallback((ticket) => {
-    if (!canvasContainerRef.current || isConnectingRef.current) return
-    cleanupRfb()
+    if (!canvasContainerRef.current) return
+    if (connectingRef.current || rfbRef.current) {
+      return
+    }
 
-    isConnectingRef.current = true
+    connectingRef.current = true
     setConnectionStatus('Connexion à Chromium…')
     setErrorMessage('')
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${protocol}//${window.location.host}/websockify?ticket=${encodeURIComponent(ticket)}`
+    if (canvasContainerRef.current) {
+      canvasContainerRef.current.innerHTML = ''
+    }
+
+    const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
+    const socketUrl = `${scheme}://${window.location.host}/websockify?ticket=${encodeURIComponent(ticket)}`
 
     try {
-      const rfb = new RFB(canvasContainerRef.current, wsUrl, {
+      const rfb = new RFB(canvasContainerRef.current, socketUrl, {
         wsProtocols: ['binary']
       })
 
-      // Expected RFB viewport configuration
+      // Viewport configuration
       rfb.scaleViewport = true
       rfb.resizeSession = true
       rfb.clipViewport = false
@@ -96,10 +101,12 @@ export default function EmbeddedBrowserModal({
       rfb.focusOnClick = true
       rfb.showDotCursor = true
 
+      rfbRef.current = rfb
+
       // Timeout if connection takes longer than 15s
       connectTimeoutRef.current = setTimeout(() => {
-        if (!rfbConnected && rfbRef.current === rfb) {
-          setConnectionStatus('Navigateur indisponible')
+        if (!rfbConnectedRef.current && rfbRef.current === rfb) {
+          setConnectionStatus('Service websockify indisponible')
           setErrorMessage('Délai de connexion dépassé. Le service distant met trop de temps à répondre.')
           cleanupRfb()
         }
@@ -110,7 +117,7 @@ export default function EmbeddedBrowserModal({
           clearTimeout(connectTimeoutRef.current)
           connectTimeoutRef.current = null
         }
-        isConnectingRef.current = false
+        connectingRef.current = false
         reconnectAttemptsRef.current = 0
         setRfbConnected(true)
         setConnectionStatus('Navigateur connecté')
@@ -126,60 +133,85 @@ export default function EmbeddedBrowserModal({
         }
       })
 
-      rfb.addEventListener('disconnect', (e) => {
+      rfb.addEventListener('disconnect', (event) => {
         if (connectTimeoutRef.current) {
           clearTimeout(connectTimeoutRef.current)
           connectTimeoutRef.current = null
         }
-        isConnectingRef.current = false
+        connectingRef.current = false
         setRfbConnected(false)
+        rfbRef.current = null
 
-        if (e && e.detail && e.detail.clean) {
+        console.error('RFB disconnected', {
+          clean: event?.detail?.clean
+        })
+
+        if (event?.detail?.clean) {
           setConnectionStatus('Session fermée')
         } else {
           // Reconnect logic with max 3 attempts
-          if (reconnectAttemptsRef.current < 3) {
+          if (reconnectAttemptsRef.current < 3 && isOpenRef.current) {
             reconnectAttemptsRef.current += 1
             setConnectionStatus(`Reconnexion… (${reconnectAttemptsRef.current}/3)`)
             setTimeout(() => {
-              if (isOpen && ticket) {
-                connectRfb(ticket)
+              if (isOpenRef.current && sessionTicketRef.current) {
+                connectRfb(sessionTicketRef.current)
               }
             }, 2000)
           } else {
-            setConnectionStatus('Connexion refusée')
+            setConnectionStatus('Connexion RFB interrompue')
             setErrorMessage('La connexion WebSocket au navigateur distant a été interrompue.')
           }
         }
       })
 
-      rfb.addEventListener('securityfailure', (e) => {
-        isConnectingRef.current = false
+      rfb.addEventListener('securityfailure', () => {
+        if (connectTimeoutRef.current) {
+          clearTimeout(connectTimeoutRef.current)
+          connectTimeoutRef.current = null
+        }
+        connectingRef.current = false
         setRfbConnected(false)
-        setConnectionStatus('Connexion refusée')
-        setErrorMessage('Échec d’authentification de la session navigateur.')
+        rfbRef.current = null
+        console.error('RFB security failure')
+        setConnectionStatus('Authentification Hack509 refusée')
+        setErrorMessage('Authentification Hack509 refusée ou ticket navigateur expiré.')
       })
 
-      rfbRef.current = rfb
+      rfb.addEventListener('credentialsrequired', () => {
+        connectingRef.current = false
+        setRfbConnected(false)
+        setConnectionStatus('Identifiants VNC requis')
+        setErrorMessage('Identifiants VNC requis par le serveur distant.')
+      })
+
     } catch (err) {
-      isConnectingRef.current = false
+      connectingRef.current = false
+      rfbRef.current = null
       console.error('RFB init error:', err)
-      setConnectionStatus('Navigateur indisponible')
+      setConnectionStatus('Service websockify indisponible')
       setErrorMessage(err.message || 'Impossible d’initialiser le client RFB.')
     }
-  }, [cleanupRfb, initialPhone, isOpen, rfbConnected])
+  }, [cleanupRfb, initialPhone])
 
   // Initialize browser session on backend and launch RFB
-  const initBrowserSession = useCallback(async (target) => {
+  const initBrowserSession = useCallback(async (target, forceNew = false) => {
     setConnectionStatus('Initialisation du navigateur…')
     setErrorMessage('')
     setRfbConnected(false)
     reconnectAttemptsRef.current = 0
 
+    // Clean up any stale RFB instance before starting
+    cleanupRfb()
+
     try {
-      const resp = await api.post('/api/browser/session/', { target })
+      const resp = await api.post('/api/browser/session/', {
+        target,
+        force_new_ticket: forceNew
+      })
       if (resp.data && resp.data.success) {
         const ticket = resp.data.ticket || ''
+        sessionTicketRef.current = ticket
         setSessionTicket(ticket)
         setProxyActive(Boolean(resp.data.proxy_active))
         setProxyProvider(resp.data.proxy_provider || 'Connexion directe')
@@ -201,18 +233,19 @@ export default function EmbeddedBrowserModal({
         setErrorMessage(err.response?.data?.error || 'Serveur du navigateur indisponible.')
       }
     }
-  }, [connectRfb])
+  }, [cleanupRfb, connectRfb])
 
   useEffect(() => {
     if (isOpen) {
       setTargetSite(initialTarget)
       setErrorMessage('')
-      initBrowserSession(initialTarget)
+      initBrowserSession(initialTarget, false)
       if (initialPhone) {
         copyNumberToClipboard(initialPhone, initialTarget)
       }
     } else {
       cleanupRfb()
+      sessionTicketRef.current = ''
       setSessionTicket('')
       setPreviewOpen(false)
       setRfbConnected(false)
@@ -220,7 +253,7 @@ export default function EmbeddedBrowserModal({
     return () => {
       cleanupRfb()
     }
-  }, [isOpen, initialTarget, initialPhone, initBrowserSession, cleanupRfb])
+  }, [isOpen])
 
   const handleClose = async () => {
     cleanupRfb()
@@ -229,6 +262,7 @@ export default function EmbeddedBrowserModal({
     } catch (err) {
       console.warn('Close session error:', err)
     }
+    sessionTicketRef.current = ''
     setSessionTicket('')
     setPreviewOpen(false)
     setRfbConnected(false)
@@ -556,7 +590,7 @@ export default function EmbeddedBrowserModal({
                   </div>
                   <button
                     type="button"
-                    onClick={() => initBrowserSession(targetSite)}
+                    onClick={() => initBrowserSession(targetSite, true)}
                     className="btn-cyber px-5 py-2 text-xs font-mono font-bold rounded-sm border-neon-cyan text-neon-cyan hover:bg-neon-cyan/20 cursor-pointer"
                   >
                     ⟳ RÉESSAYER
