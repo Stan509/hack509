@@ -134,10 +134,10 @@ export default function CallControls() {
   }
 
   return (
-    <div className="flex flex-col h-full items-center justify-between py-6 px-4">
+    <div className="flex flex-col h-full items-center justify-between py-2.5 md:py-6 px-3 md:px-4 overflow-y-auto scrollbar-cyber w-full">
       {/* Status Header */}
       <div className="w-full">
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <div className="flex items-center justify-between mb-2 md:mb-4 flex-wrap gap-2">
           <div className="terminal-header">Active Call</div>
           <div className="flex items-center gap-2">
             {/* Ringing Timeout Selector */}
@@ -254,7 +254,7 @@ export default function CallControls() {
           >
             {/* Avatar */}
             <div
-              className="w-20 h-20 rounded-full flex items-center justify-center text-4xl font-mono font-bold mx-auto mb-4"
+              className="w-14 h-14 md:w-20 md:h-20 rounded-full flex items-center justify-center text-2xl md:text-4xl font-mono font-bold mx-auto mb-2 md:mb-4"
               style={{
                 background: 'rgba(0,255,102,0.1)',
                 border: `2px solid ${isCallActive ? '#00ff66' : 'rgba(0,255,102,0.3)'}`,
@@ -266,12 +266,12 @@ export default function CallControls() {
             </div>
 
             <div
-              className="text-2xl font-mono font-bold mb-1"
+              className="text-lg md:text-2xl font-mono font-bold mb-0.5 md:mb-1"
               style={{ color: '#00ff66', textShadow: '0 0 15px #00ff66' }}
             >
               {currentContact.first_name} {currentContact.last_name || currentContact.name}
             </div>
-            <div className="text-text-muted font-mono text-lg tracking-widest mb-2 flex items-center justify-center gap-2 flex-wrap">
+            <div className="text-text-muted font-mono text-sm md:text-lg tracking-widest mb-1.5 md:mb-2 flex items-center justify-center gap-2 flex-wrap">
               <span>{currentContact.phone}</span>
               <button
                 onClick={() => toggleFavoriteContact(currentContact)}
@@ -515,6 +515,7 @@ export default function CallControls() {
         isOpen={transferModalOpen}
         onClose={() => setTransferModalOpen(false)}
         currentContact={currentContact}
+        callSid={activeCall?.parameters?.CallSid || activeCall?.sid || ''}
         onInitiateTransfer={handleInitiateTransfer}
       />
     </div>

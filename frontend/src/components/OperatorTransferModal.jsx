@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../contexts/AuthContext.jsx'
 
-export default function OperatorTransferModal({ isOpen, onClose, currentContact, onInitiateTransfer }) {
+export default function OperatorTransferModal({ isOpen, onClose, currentContact, callSid, onInitiateTransfer }) {
   const [operators, setOperators] = useState([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
@@ -58,6 +58,7 @@ export default function OperatorTransferModal({ isOpen, onClose, currentContact,
         contact_name: contactFullName,
         contact_id: currentContact?.id || null,
         is_broadcast: isBroadcast,
+        call_sid: callSid || '',
       })
 
       const successMsg = res.data?.message || (isBroadcast

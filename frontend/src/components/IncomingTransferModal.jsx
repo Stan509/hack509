@@ -9,7 +9,7 @@ import { callAudio } from '../utils/callAudio.js'
 export default function IncomingTransferModal() {
   const { api, isAuthenticated, user } = useAuth()
   const { setCurrentContact, setCallStatus, callStatus } = useDialer()
-  const { makeCall } = useTelephony()
+  const { makeCall, acceptIncoming, activeCall } = useTelephony()
   const navigate = useNavigate()
 
   const [activeTransfer, setActiveTransfer] = useState(null)
@@ -83,17 +83,20 @@ export default function IncomingTransferModal() {
       }
 
       setCurrentContact(newContact)
-      setCallStatus('dialing')
+      setCallStatus('active')
       
       // Navigate to dialer view
       navigate('/dialer')
 
-      // Connect call directly
-      setTimeout(() => {
-        if (activeTransfer.phone) {
-          makeCall(activeTransfer.phone)
+      // CONTINUITÉ D'APPEL : Si l'appel Twilio arrive sur le Device de cet opérateur, on décroche directement la ligne existante
+      // On n'appelle SURTOUT PAS à nouveau le numéro du client (makeCall(phone)), pour éviter qu'il reçoive un 2ème appel !
+      if (activeCall) {
+        try {
+          acceptIncoming()
+        } catch (e) {
+          console.warn('[Transfer] Error accepting incoming call:', e)
         }
-      }, 500)
+      }
 
       setActiveTransfer(null)
     } catch (err) {

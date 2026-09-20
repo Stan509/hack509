@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useDialer } from '../contexts/DialerContext.jsx'
 import { useAuth } from '../contexts/AuthContext.jsx'
@@ -189,38 +189,101 @@ function OutcomePanel() {
 
 export default function Dialer() {
   const [showAddModal, setShowAddModal] = useState(false)
-  const { addToQueue } = useDialer()
+  const [mobileTab, setMobileTab] = useState('dialer') // 'dialer' | 'queue' | 'outcome'
+  const { addToQueue, queue, callStatus } = useDialer()
+
+  const isInCall = callStatus === 'active' || callStatus === 'holding' || callStatus === 'dialing' || callStatus === 'ringing'
+
+  // If a call starts, auto-switch to dialer tab on mobile so operator sees call controls immediately
+  useEffect(() => {
+    if (isInCall) {
+      setMobileTab('dialer')
+    }
+  }, [isInCall])
 
   return (
-    <div className="h-[calc(100vh-52px)] flex flex-col">
-      {/* Page Header */}
-      <div className="px-6 py-3 border-b border-neon-green border-opacity-10 flex items-center justify-between flex-shrink-0">
+    <div className="h-[calc(100vh-52px)] flex flex-col overflow-hidden">
+      {/* Page Header (Compact on mobile) */}
+      <div className="px-3 md:px-6 py-2 md:py-3 border-b border-neon-green border-opacity-10 flex items-center justify-between flex-shrink-0 bg-black/40">
         <div>
-          <div className="terminal-header">Call Center Interface</div>
-          <h1 className="text-text-terminal text-lg font-mono font-bold" style={{ color: '#00ff66', textShadow: '0 0 10px #00ff66' }}>
+          <div className="terminal-header text-[0.65rem] md:text-xs">Call Center Interface</div>
+          <h1 className="text-text-terminal text-sm md:text-lg font-mono font-bold" style={{ color: '#00ff66', textShadow: '0 0 10px #00ff66' }}>
             DIALER TERMINAL
           </h1>
         </div>
-        <div className="text-text-muted text-xs font-mono" style={{ fontSize: '0.65rem' }}>
-          HACKER509 by LH5 Leley Hacker 509
+        <div className="text-text-muted text-[0.6rem] md:text-xs font-mono">
+          HACKER509 by LH5
         </div>
       </div>
 
-      {/* Three-panel layout */}
-      <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-0 overflow-hidden">
-        {/* LEFT: Queue */}
-        <div className="border-r border-neon-green border-opacity-10 overflow-hidden flex flex-col p-3">
+      {/* Mobile Tab Selector (Visible only on mobile screens < md) */}
+      <div className="md:hidden flex border-b border-white/10 bg-black/90 shrink-0">
+        <button
+          type="button"
+          onClick={() => setMobileTab('dialer')}
+          className={`flex-1 py-2.5 px-2 text-xs font-mono font-bold flex items-center justify-center gap-1.5 border-b-2 transition-all cursor-pointer ${
+            mobileTab === 'dialer'
+              ? 'border-neon-green text-neon-green bg-neon-green/15 shadow-[0_0_12px_rgba(0,255,102,0.2)]'
+              : 'border-transparent text-text-muted hover:text-white'
+          }`}
+        >
+          <span>📞</span>
+          <span>APPEL</span>
+          {isInCall && (
+            <span className="w-2 h-2 rounded-full bg-neon-green animate-ping inline-block ml-0.5" />
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMobileTab('queue')}
+          className={`flex-1 py-2.5 px-2 text-xs font-mono font-bold flex items-center justify-center gap-1.5 border-b-2 transition-all cursor-pointer ${
+            mobileTab === 'queue'
+              ? 'border-neon-green text-neon-green bg-neon-green/15 shadow-[0_0_12px_rgba(0,255,102,0.2)]'
+              : 'border-transparent text-text-muted hover:text-white'
+          }`}
+        >
+          <span>📋</span>
+          <span>FILE ({queue?.length || 0})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMobileTab('outcome')}
+          className={`flex-1 py-2.5 px-2 text-xs font-mono font-bold flex items-center justify-center gap-1.5 border-b-2 transition-all cursor-pointer ${
+            mobileTab === 'outcome'
+              ? 'border-neon-green text-neon-green bg-neon-green/15 shadow-[0_0_12px_rgba(0,255,102,0.2)]'
+              : 'border-transparent text-text-muted hover:text-white'
+          }`}
+        >
+          <span>📝</span>
+          <span>NOTES</span>
+        </button>
+      </div>
+
+      {/* Three-panel layout (Desktop 3-cols side-by-side, Mobile active tab only) */}
+      <div className="flex-1 overflow-hidden md:grid md:grid-cols-3 gap-0 flex flex-col">
+        {/* LEFT: Queue (Hidden on mobile unless mobileTab === 'queue') */}
+        <div className={`border-r border-neon-green border-opacity-10 overflow-hidden flex flex-col p-2.5 md:p-3 h-full ${
+          mobileTab === 'queue' ? 'flex flex-1' : 'hidden md:flex'
+        }`}>
           <DialerQueue onAddContact={() => setShowAddModal(true)} />
         </div>
 
-        {/* CENTER: Call Controls */}
-        <div className="border-r border-neon-green border-opacity-10 overflow-hidden"
-          style={{ background: 'radial-gradient(ellipse at center bottom, rgba(0,255,102,0.03) 0%, transparent 70%)' }}>
+        {/* CENTER: Call Controls (Default on mobile, full-screen accessible) */}
+        <div
+          className={`border-r border-neon-green border-opacity-10 overflow-y-auto scrollbar-cyber h-full flex flex-col ${
+            mobileTab === 'dialer' ? 'flex flex-1' : 'hidden md:flex'
+          }`}
+          style={{ background: 'radial-gradient(ellipse at center bottom, rgba(0,255,102,0.03) 0%, transparent 70%)' }}
+        >
           <CallControls />
         </div>
 
-        {/* RIGHT: Outcome + Audio */}
-        <div className="overflow-y-auto scrollbar-cyber p-3 space-y-3">
+        {/* RIGHT: Outcome + Audio (Hidden on mobile unless mobileTab === 'outcome') */}
+        <div className={`overflow-y-auto scrollbar-cyber p-2.5 md:p-3 space-y-3 h-full ${
+          mobileTab === 'outcome' ? 'block flex-1' : 'hidden md:block'
+        }`}>
           <OutcomePanel />
           <AudioProcessor />
         </div>

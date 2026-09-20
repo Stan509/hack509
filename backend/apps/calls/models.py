@@ -84,6 +84,7 @@ class CallTransfer(models.Model):
     phone = models.CharField(max_length=50)
     contact_name = models.CharField(max_length=200, blank=True)
     contact_id = models.IntegerField(null=True, blank=True)
+    call_sid = models.CharField(max_length=100, blank=True)
     is_broadcast = models.BooleanField(default=False)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     accepted_by = models.ForeignKey(

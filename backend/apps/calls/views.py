@@ -275,6 +275,7 @@ class CallTransferView(APIView):
         phone = request.data.get('phone', '')
         contact_name = request.data.get('contact_name', '')
         contact_id = request.data.get('contact_id')
+        call_sid = request.data.get('call_sid', '')
         is_broadcast = request.data.get('is_broadcast', False) or target_operator_id == 'all'
 
         target_user = None
@@ -290,11 +291,50 @@ class CallTransferView(APIView):
             phone=phone,
             contact_name=contact_name,
             contact_id=int(contact_id) if (contact_id and str(contact_id).isdigit()) else None,
+            call_sid=call_sid,
             is_broadcast=is_broadcast,
             status='pending',
         )
 
-        logger.info(f"Created CallTransfer #{transfer.id} from {request.user.username} to {target_user.username if target_user else 'ALL'} for {phone}")
+        logger.info(f"Created CallTransfer #{transfer.id} from {request.user.username} to {target_user.username if target_user else 'ALL'} for {phone} (CallSID: {call_sid})")
+
+        # True call continuity: Redirect existing Twilio call to target operator so client never gets called twice
+        if call_sid:
+            try:
+                from twilio.rest import Client
+                cfg = get_effective_config()
+                if cfg and cfg.get('account_sid') and cfg.get('auth_token'):
+                    client = Client(cfg['account_sid'], cfg['auth_token'])
+                    caller_id = clean_e164(cfg.get('phone_number', ''))
+                    caller_attr = f' callerId="{caller_id}"' if caller_id else ''
+
+                    target_name = target_user.username if target_user else target_operator_name
+                    if is_broadcast:
+                        operators = CustomUser.objects.filter(is_active=True).exclude(id=request.user.id)
+                        clients_xml = ''.join([f'<Client>{op.username}</Client>' for op in operators])
+                        redirect_twiml = f'''<?xml version="1.0" encoding="UTF-8"?><Response><Dial{caller_attr}>{clients_xml}</Dial></Response>'''
+                    else:
+                        redirect_twiml = f'''<?xml version="1.0" encoding="UTF-8"?><Response><Dial{caller_attr}><Client>{target_name}</Client></Dial></Response>'''
+
+                    # Find child call (the client's leg on Twilio)
+                    child_calls = client.calls.list(parent_call_sid=call_sid, status='in-progress')
+                    if not child_calls:
+                        child_calls = client.calls.list(parent_call_sid=call_sid)
+
+                    if child_calls:
+                        client_leg = child_calls[0]
+                        logger.info(f"Call continuity: Redirecting client leg {client_leg.sid} to {target_name}")
+                        client.calls(client_leg.sid).update(twiml=redirect_twiml)
+                        # Gracefully close operator A's WebRTC leg
+                        try:
+                            client.calls(call_sid).update(status='completed')
+                        except Exception:
+                            pass
+                    else:
+                        logger.info(f"Call continuity: Updating call {call_sid} to {target_name}")
+                        client.calls(call_sid).update(twiml=redirect_twiml)
+            except Exception as e_tw:
+                logger.warning(f"Could not transfer Twilio call leg via REST API: {e_tw}")
 
         msg = "Appel diffusé à tous les opérateurs disponibles." if is_broadcast else f"Transfert d'appel vers {target_operator_name} initié."
         return Response({
@@ -306,6 +346,7 @@ class CallTransferView(APIView):
             'target_operator_name': target_operator_name,
             'phone': phone,
             'contact_name': contact_name,
+            'call_sid': call_sid,
         }, status=status.HTTP_201_CREATED)
 
 
