@@ -55,3 +55,53 @@ class CallLog(models.Model):
         minutes = self.duration // 60
         seconds = self.duration % 60
         return f'{minutes:02d}:{seconds:02d}'
+
+
+class CallTransfer(models.Model):
+    """
+    Tracks in-progress and completed call transfers between operators.
+    """
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('accepted', 'Accepted'),
+        ('rejected', 'Rejected'),
+        ('canceled', 'Canceled'),
+    ]
+
+    from_operator = models.ForeignKey(
+        'accounts.CustomUser',
+        on_delete=models.CASCADE,
+        related_name='initiated_transfers'
+    )
+    target_operator = models.ForeignKey(
+        'accounts.CustomUser',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='received_transfers',
+        help_text='Null if broadcast to all available operators'
+    )
+    phone = models.CharField(max_length=50)
+    contact_name = models.CharField(max_length=200, blank=True)
+    contact_id = models.IntegerField(null=True, blank=True)
+    is_broadcast = models.BooleanField(default=False)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    accepted_by = models.ForeignKey(
+        'accounts.CustomUser',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='accepted_transfers'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Call Transfer'
+        verbose_name_plural = 'Call Transfers'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        target = self.target_operator.username if self.target_operator else 'BROADCAST'
+        return f"Transfer from {self.from_operator.username} to {target} ({self.phone}) [{self.status}]"
+

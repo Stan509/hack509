@@ -83,15 +83,21 @@ const useTwilio = () => {
         callRef.current = call
         setActiveCall(call)
         setCallStatus('ringing')
+        callAudio.startIncomingCallRing()
 
-        call.on('accept', () => setCallStatus('active'))
+        call.on('accept', () => {
+          callAudio.stopIncomingCallRing()
+          setCallStatus('active')
+        })
         call.on('disconnect', () => {
+          callAudio.stopIncomingCallRing()
           setCallStatus('ended')
           callRef.current = null
           setActiveCall(null)
           setTimeout(() => setCallStatus('idle'), 2000)
         })
         call.on('reject', () => {
+          callAudio.stopIncomingCallRing()
           setCallStatus('idle')
           callRef.current = null
           setActiveCall(null)
@@ -235,6 +241,7 @@ const useTwilio = () => {
   }, [isMuted])
 
   const acceptIncoming = useCallback(() => {
+    callAudio.stopIncomingCallRing()
     if (callRef.current) {
       callRef.current.accept()
       setCallStatus('active')
@@ -242,6 +249,7 @@ const useTwilio = () => {
   }, [])
 
   const rejectIncoming = useCallback(() => {
+    callAudio.stopIncomingCallRing()
     if (callRef.current) {
       callRef.current.reject()
       callRef.current = null

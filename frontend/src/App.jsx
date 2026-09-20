@@ -10,6 +10,7 @@ import Contacts from './pages/Contacts.jsx'
 import CallHistory from './pages/CallHistory.jsx'
 import Settings from './pages/Settings.jsx'
 import UserManagement from './pages/UserManagement.jsx'
+import IncomingTransferModal from './components/IncomingTransferModal.jsx'
 
 function Layout({ children }) {
   return (
@@ -18,6 +19,7 @@ function Layout({ children }) {
       <main className="flex-1 overflow-auto">
         {children}
       </main>
+      <IncomingTransferModal />
     </div>
   )
 }

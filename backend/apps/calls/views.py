@@ -2,6 +2,7 @@
 Calls views - Call log management and statistics.
 """
 import logging
+from datetime import timedelta
 from django.utils import timezone
 from django.db.models import Count, Q
 from rest_framework import status
@@ -11,7 +12,8 @@ from rest_framework.views import APIView
 from rest_framework.pagination import PageNumberPagination
 
 from apps.contacts.models import Contact
-from .models import CallLog
+from apps.accounts.models import CustomUser
+from .models import CallLog, CallTransfer
 from .serializers import CallLogSerializer, CallLogCreateSerializer, CallLogUpdateSerializer
 
 logger = logging.getLogger(__name__)
@@ -219,7 +221,20 @@ class TwimlVoiceView(APIView):
             request.GET.get('To') or
             request.GET.get('number') or
             ''
-        )
+        ).strip()
+
+        # Check if destination is a Twilio Client / operator username
+        if raw_to.startswith('client:') or (not raw_to.startswith('+') and not raw_to.replace('+', '').isdigit() and len(raw_to) > 0 and '@' not in raw_to):
+            client_id = raw_to.replace('client:', '').strip()
+            logger.info(f"TwiML Voice Webhook: Dialing Twilio Client identity: '{client_id}'")
+            twiml = f'''<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Dial>
+        <Client>{client_id}</Client>
+    </Dial>
+</Response>'''
+            return HttpResponse(twiml, content_type='text/xml')
+
         to_number = clean_e164(raw_to)
 
         # Retrieve effective Twilio caller ID from config or environment
@@ -249,8 +264,8 @@ class TwimlVoiceView(APIView):
 class CallTransferView(APIView):
     """
     POST /api/calls/transfer/
-    Initiate in-call operator transfer with hold audio/pip.
-    Supports broadcast transfers to all available operators (first to answer wins).
+    Initiate in-call operator transfer with database persistence & real-time ringing.
+    Supports broadcast transfers to all available operators.
     """
     permission_classes = [IsAuthenticated]
 
@@ -258,21 +273,151 @@ class CallTransferView(APIView):
         target_operator_id = request.data.get('target_operator_id')
         target_operator_name = request.data.get('target_operator_name', 'Opérateur')
         phone = request.data.get('phone', '')
+        contact_name = request.data.get('contact_name', '')
+        contact_id = request.data.get('contact_id')
         is_broadcast = request.data.get('is_broadcast', False) or target_operator_id == 'all'
 
-        if is_broadcast:
-            logger.info(f"Broadcast call transfer initiated by {request.user.username} to ALL available operators for phone {phone}")
-            msg = "Appel diffusé à tous les opérateurs disponibles. Le premier qui décroche prend la main."
-        else:
-            logger.info(f"Call transfer initiated by user {request.user.username} to {target_operator_name} ({target_operator_id}) for phone {phone}")
-            msg = f"Transfert d'appel vers {target_operator_name} initié."
+        target_user = None
+        if not is_broadcast and target_operator_id and str(target_operator_id).isdigit():
+            try:
+                target_user = CustomUser.objects.get(id=int(target_operator_id))
+            except CustomUser.DoesNotExist:
+                target_user = None
 
+        transfer = CallTransfer.objects.create(
+            from_operator=request.user,
+            target_operator=target_user,
+            phone=phone,
+            contact_name=contact_name,
+            contact_id=int(contact_id) if (contact_id and str(contact_id).isdigit()) else None,
+            is_broadcast=is_broadcast,
+            status='pending',
+        )
+
+        logger.info(f"Created CallTransfer #{transfer.id} from {request.user.username} to {target_user.username if target_user else 'ALL'} for {phone}")
+
+        msg = "Appel diffusé à tous les opérateurs disponibles." if is_broadcast else f"Transfert d'appel vers {target_operator_name} initié."
         return Response({
             'success': True,
+            'transfer_id': transfer.id,
             'message': msg,
             'is_broadcast': is_broadcast,
             'target_operator_id': target_operator_id,
             'target_operator_name': target_operator_name,
-            'hold_audio_url': '/static/audio/hold_pip.mp3',
+            'phone': phone,
+            'contact_name': contact_name,
+        }, status=status.HTTP_201_CREATED)
+
+
+class PendingTransfersView(APIView):
+    """
+    GET /api/calls/transfers/pending/
+    Returns active transfers directed to the logged-in operator or broadcasted to all.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        cutoff = timezone.now() - timedelta(seconds=60)
+        transfers = CallTransfer.objects.filter(
+            status='pending',
+            created_at__gte=cutoff
+        ).exclude(
+            from_operator=request.user
+        ).filter(
+            Q(target_operator=request.user) | Q(target_operator__isnull=True)
+        ).select_related('from_operator').order_by('-created_at')
+
+        results = []
+        for t in transfers:
+            results.append({
+                'id': t.id,
+                'from_operator_id': t.from_operator.id,
+                'from_operator_name': t.from_operator.username or t.from_operator.get_full_name() or 'Opérateur',
+                'phone': t.phone,
+                'contact_name': t.contact_name,
+                'contact_id': t.contact_id,
+                'is_broadcast': t.is_broadcast,
+                'created_at': t.created_at.isoformat(),
+            })
+
+        return Response({'transfers': results}, status=status.HTTP_200_OK)
+
+
+class AcceptTransferView(APIView):
+    """
+    POST /api/calls/transfers/<int:pk>/accept/
+    Marks a transfer as accepted by the current operator.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        try:
+            transfer = CallTransfer.objects.get(pk=pk)
+        except CallTransfer.DoesNotExist:
+            return Response({'error': 'Transfert introuvable.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if transfer.status != 'pending':
+            return Response({
+                'success': False,
+                'message': f"Cet appel a déjà été {transfer.status}.",
+                'status': transfer.status
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        transfer.status = 'accepted'
+        transfer.accepted_by = request.user
+        transfer.save(update_fields=['status', 'accepted_by', 'updated_at'])
+
+        logger.info(f"CallTransfer #{transfer.id} accepted by {request.user.username}")
+
+        return Response({
+            'success': True,
+            'message': 'Transfert accepté avec succès.',
+            'transfer_id': transfer.id,
+            'phone': transfer.phone,
+            'contact_name': transfer.contact_name,
+            'contact_id': transfer.contact_id,
+        }, status=status.HTTP_200_OK)
+
+
+class RejectTransferView(APIView):
+    """
+    POST /api/calls/transfers/<int:pk>/reject/
+    Marks a transfer as rejected.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        try:
+            transfer = CallTransfer.objects.get(pk=pk)
+        except CallTransfer.DoesNotExist:
+            return Response({'error': 'Transfert introuvable.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if not transfer.is_broadcast:
+            transfer.status = 'rejected'
+            transfer.save(update_fields=['status', 'updated_at'])
+            logger.info(f"CallTransfer #{transfer.id} rejected by {request.user.username}")
+
+        return Response({'success': True, 'message': 'Transfert refusé.'}, status=status.HTTP_200_OK)
+
+
+class TransferStatusView(APIView):
+    """
+    GET /api/calls/transfers/<int:pk>/status/
+    Used by initiator to check if the transferred call was answered/accepted.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        try:
+            transfer = CallTransfer.objects.select_related('accepted_by').get(pk=pk)
+        except CallTransfer.DoesNotExist:
+            return Response({'error': 'Transfert introuvable.'}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response({
+            'transfer_id': transfer.id,
+            'status': transfer.status,
+            'accepted_by': transfer.accepted_by.username if transfer.accepted_by else None,
+            'phone': transfer.phone,
+            'contact_name': transfer.contact_name,
         }, status=status.HTTP_200_OK)
 

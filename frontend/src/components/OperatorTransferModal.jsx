@@ -50,16 +50,19 @@ export default function OperatorTransferModal({ isOpen, onClose, currentContact,
     setTransferSuccess(null)
     try {
       const isBroadcast = op.id === 'all'
+      const contactFullName = `${currentContact?.first_name || ''} ${currentContact?.last_name || ''}`.trim() || currentContact?.name || 'Client'
       const res = await api.post('/api/calls/transfer/', {
-        target_operator_id: op.id,
+        target_operator_id: op.id === 'all' ? null : op.id,
         target_operator_name: op.username || op.first_name || 'Opérateur',
         phone: currentContact?.phone || '',
+        contact_name: contactFullName,
+        contact_id: currentContact?.id || null,
         is_broadcast: isBroadcast,
       })
 
       const successMsg = res.data?.message || (isBroadcast
-        ? `Appel diffusé à tous les opérateurs disponibles. Le premier qui décroche prendra l'appel.`
-        : `Transfert d'appel vers ${op.username} initié.`)
+        ? `Appel diffusé ! Le téléphone des opérateurs en ligne sonne actuellement.`
+        : `Transfert initié ! Le téléphone de ${op.username} sonne actuellement.`)
 
       setTransferSuccess(successMsg)
 

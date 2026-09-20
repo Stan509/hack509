@@ -7,6 +7,8 @@ class CallAudioEngine {
     this.isPlayingDialing = false
     this.holdInterval = null
     this.isPlayingHold = false
+    this.ringInterval = null
+    this.isPlayingRing = false
   }
 
   init() {
@@ -170,6 +172,79 @@ class CallAudioEngine {
     if (this.holdInterval) {
       clearInterval(this.holdInterval)
       this.holdInterval = null
+    }
+  }
+
+  // 5. Sonnerie d'Appel Entrant / Transfert (Loud & Clear Telephone Ringtone)
+  startIncomingCallRing() {
+    this.stopDialingSound()
+    this.stopHoldMusic()
+    this.init()
+    if (!this.ctx || this.isPlayingRing) return
+    this.isPlayingRing = true
+
+    const playRingCycle = () => {
+      if (!this.isPlayingRing || !this.ctx) return
+      try {
+        const now = this.ctx.currentTime
+
+        // Premier coup de sonnerie (440Hz + 480Hz pendant 0.5s)
+        const osc1a = this.ctx.createOscillator()
+        const osc2a = this.ctx.createOscillator()
+        const gainA = this.ctx.createGain()
+
+        osc1a.type = 'sine'
+        osc2a.type = 'sine'
+        osc1a.frequency.value = 440
+        osc2a.frequency.value = 480
+
+        gainA.gain.setValueAtTime(0.22, now)
+        gainA.gain.exponentialRampToValueAtTime(0.001, now + 0.45)
+
+        osc1a.connect(gainA)
+        osc2a.connect(gainA)
+        gainA.connect(this.ctx.destination)
+
+        osc1a.start(now)
+        osc2a.start(now)
+        osc1a.stop(now + 0.45)
+        osc2a.stop(now + 0.45)
+
+        // Deuxième coup de sonnerie (440Hz + 480Hz pendant 0.5s après 0.2s de silence)
+        const osc1b = this.ctx.createOscillator()
+        const osc2b = this.ctx.createOscillator()
+        const gainB = this.ctx.createGain()
+
+        osc1b.type = 'sine'
+        osc2b.type = 'sine'
+        osc1b.frequency.value = 440
+        osc2b.frequency.value = 480
+
+        gainB.gain.setValueAtTime(0.22, now + 0.65)
+        gainB.gain.exponentialRampToValueAtTime(0.001, now + 1.1)
+
+        osc1b.connect(gainB)
+        osc2b.connect(gainB)
+        gainB.connect(this.ctx.destination)
+
+        osc1b.start(now + 0.65)
+        osc2b.start(now + 0.65)
+        osc1b.stop(now + 1.1)
+        osc2b.stop(now + 1.1)
+      } catch (err) {
+        console.warn('Incoming ring audio error:', err)
+      }
+    }
+
+    playRingCycle()
+    this.ringInterval = setInterval(playRingCycle, 3000)
+  }
+
+  stopIncomingCallRing() {
+    this.isPlayingRing = false
+    if (this.ringInterval) {
+      clearInterval(this.ringInterval)
+      this.ringInterval = null
     }
   }
 }
