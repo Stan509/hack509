@@ -45,7 +45,7 @@ const STATUS_DISPLAY = {
 
 export default function CallControls() {
   const { currentContact, callStatus, callTimer, formatTimer, dialNext, hangUp, queue, autoDial, setAutoDial, toggleFavoriteContact, ringTimeout, setRingTimeout, ringTimer, ringTimeoutActive } = useDialer()
-  const { makeCall, hangup, hold, mute, isMuted, isOnHold, isReady, simulationMode, error, providerType, switchProvider } = useTelephony()
+  const { makeCall, hangup, hold, mute, isMuted, isOnHold, isReady, simulationMode, error, clearError, providerType, switchProvider } = useTelephony()
 
   const [browserOpen, setBrowserOpen] = useState(false)
   const [browserTarget, setBrowserTarget] = useState('tps')
@@ -103,6 +103,7 @@ export default function CallControls() {
   }
 
   const handleHangup = () => {
+    if (clearError) clearError()
     hangup()
     hangUp()
   }
@@ -159,11 +160,41 @@ export default function CallControls() {
           <motion.div
             initial={{ opacity: 0, y: -5 }}
             animate={{ opacity: 1, y: 0 }}
-            className="w-full text-center p-2 mb-3 rounded text-xs font-mono text-neon-danger border border-neon-danger flex items-center justify-between"
+            className="w-full p-2.5 mb-3 rounded text-xs font-mono text-neon-danger border border-neon-danger flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2"
             style={{ background: 'rgba(255,34,68,0.15)', boxShadow: '0 0 12px rgba(255,34,68,0.3)' }}
           >
-            <span>⚠️ {providerType === 'asterisk' ? 'SIP / ASTERISK' : 'TWILIO'}: {error}</span>
-            <button onClick={handleHangup} className="text-[0.65rem] underline font-bold hover:text-white">RÉINITIALISER</button>
+            <div className="flex-1 pr-2">
+              <span className="font-bold">⚠️ {providerType === 'asterisk' ? 'SIP / ASTERISK' : 'TWILIO'}:</span> {error}
+            </div>
+            <div className="flex items-center gap-2 flex-wrap shrink-0">
+              {providerType === 'twilio' && (
+                <button
+                  type="button"
+                  onClick={() => switchProvider('asterisk')}
+                  className="px-2 py-0.5 rounded text-[0.7rem] font-bold border border-neon-cyan text-neon-cyan bg-neon-cyan/10 hover:bg-neon-cyan/20 transition-all cursor-pointer"
+                  title="Basculer instantanément sur Asterisk SIP"
+                >
+                  BASCULER SUR SIP
+                </button>
+              )}
+              {providerType === 'asterisk' && (
+                <button
+                  type="button"
+                  onClick={() => switchProvider('twilio')}
+                  className="px-2 py-0.5 rounded text-[0.7rem] font-bold border border-neon-green text-neon-green bg-neon-green/10 hover:bg-neon-green/20 transition-all cursor-pointer"
+                  title="Basculer instantanément sur Twilio Voice"
+                >
+                  BASCULER SUR TWILIO
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleHangup}
+                className="px-2 py-0.5 rounded text-[0.7rem] font-bold border border-red-500/50 text-white bg-red-500/20 hover:bg-red-500/40 transition-all cursor-pointer"
+              >
+                RÉINITIALISER
+              </button>
+            </div>
           </motion.div>
         )}
 

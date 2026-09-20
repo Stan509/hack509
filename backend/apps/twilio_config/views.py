@@ -59,18 +59,34 @@ def auto_provision_twilio_keys(config):
             modified = True
             logger.info("Auto-provisioned API Key SID: %s", new_key.sid)
 
-        # 2. Create TwiML App SID (AP...) if missing
+        # 2. Create or update TwiML App SID (AP...) for outbound voice calls
+        default_voice_url = os.environ.get(
+            'TWILIO_VOICE_URL',
+            os.environ.get('PUBLIC_APP_URL', 'https://hacker509.gaboomdriveos.com')
+        ).rstrip('/') + '/api/calls/twiml/'
+
         if not config.twiml_app_sid or not config.twiml_app_sid.startswith('AP'):
             logger.info("Auto-provisioning TwiML App (AP...) for outbound voice calls...")
-            voice_url = 'https://hack509-app-pezir.ondigitalocean.app/api/calls/twiml/'
             new_app = client.applications.create(
                 friendly_name='Hacker509 Voice Application',
-                voice_url=voice_url,
+                voice_url=default_voice_url,
                 voice_method='POST'
             )
             config.twiml_app_sid = new_app.sid
             modified = True
             logger.info("Auto-provisioned TwiML App SID: %s", new_app.sid)
+        else:
+            # Ensure existing TwiML App points to the active voice webhook URL
+            try:
+                app = client.applications(config.twiml_app_sid).fetch()
+                if not app.voice_url or 'hack509-app-pezir.ondigitalocean.app' in app.voice_url:
+                    logger.info("Updating outdated TwiML App voice_url (%s) to %s", app.voice_url, default_voice_url)
+                    client.applications(config.twiml_app_sid).update(
+                        voice_url=default_voice_url,
+                        voice_method='POST'
+                    )
+            except Exception as e_app:
+                logger.warning(f"Could not verify/update existing TwiML app voice_url: {e_app}")
 
         if modified:
             config.save()
@@ -332,6 +348,23 @@ class TwilioTestView(APIView):
             msg = f'Connecté avec succès à Twilio : {acc.friendly_name} (Statut: {acc.status})'
             if cfg.get('api_key_sid'):
                 msg += f' | Clé API SK (Voice SDK) active : {cfg["api_key_sid"][:8]}...'
+            if cfg.get('twiml_app_sid'):
+                try:
+                    default_voice_url = os.environ.get(
+                        'TWILIO_VOICE_URL',
+                        os.environ.get('PUBLIC_APP_URL', 'https://hacker509.gaboomdriveos.com')
+                    ).rstrip('/') + '/api/calls/twiml/'
+                    app = client.applications(cfg['twiml_app_sid']).fetch()
+                    if not app.voice_url or 'hack509-app-pezir.ondigitalocean.app' in app.voice_url:
+                        client.applications(cfg['twiml_app_sid']).update(
+                            voice_url=default_voice_url,
+                            voice_method='POST'
+                        )
+                        msg += f' | Webhook TwiML réparé ({default_voice_url})'
+                    else:
+                        msg += f' | Webhook TwiML : {app.voice_url}'
+                except Exception as e_app:
+                    logger.warning(f"Could not sync TwiML app in test view: {e_app}")
             return Response({
                 'success': True,
                 'message': msg

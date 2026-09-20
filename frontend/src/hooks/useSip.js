@@ -134,7 +134,12 @@ export default function useSip(sipConfig) {
     }
   }, [isRegistered, sipConfig, trackSession])
 
+  const clearError = useCallback(() => {
+    setError(null)
+  }, [])
+
   const hangup = useCallback(async () => {
+    setError(null)
     const session = sessionRef.current
     if (!session) return
     try {
@@ -193,5 +198,5 @@ export default function useSip(sipConfig) {
     else if (callStatus === 'ended' || callStatus === 'idle') callAudio.stopDialingSound()
   }, [callStatus])
 
-  return { isRegistered, callStatus, isMuted, isOnHold, activeCall, error, makeCall, hangup, hold, mute, sendDigit }
+  return { isRegistered, callStatus, isMuted, isOnHold, activeCall, error, clearError, makeCall, hangup, hold, mute, sendDigit }
 }

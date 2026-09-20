@@ -72,6 +72,7 @@ export default function useTelephony() {
     activeCall: activeEngine.activeCall,
     simulationMode: providerType === 'twilio' ? twilioEngine.simulationMode : false,
     error: activeEngine.error,
+    clearError: activeEngine.clearError,
     makeCall: activeEngine.makeCall,
     hangup: activeEngine.hangup,
     hold: activeEngine.hold,

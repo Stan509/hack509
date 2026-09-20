@@ -67,11 +67,13 @@ const useTwilio = () => {
       })
 
       dev.on('error', (err) => {
-        const errMsg = err.message || 'Twilio device error'
+        const errMsg = err?.message || 'Twilio device error'
         console.error('[Twilio] Error:', err)
-        if (err.code === 20101 || errMsg.includes('20101') || errMsg.includes('AccessTokenInvalid')) {
+        if (err?.code === 20101 || errMsg.includes('20101') || errMsg.includes('AccessTokenInvalid')) {
           setError('AccessTokenInvalid (20101): Token invalide ou expiré. Entrez vos identifiants sur /settings.')
           setSimulationMode(true)
+        } else if (err?.code === 31005 || errMsg.includes('31005')) {
+          setError("Erreur passerelle (31005) : La passerelle Twilio a rejeté la connexion. Webhook TwiML injoignable ou numéro d'appelant non vérifié.")
         } else {
           setError(errMsg)
         }
@@ -161,7 +163,13 @@ const useTwilio = () => {
         setTimeout(() => setCallStatus('idle'), 2000)
       })
       call.on('error', (err) => {
-        setError(err.message)
+        console.error('[Twilio] Call error:', err)
+        const errMsg = err?.message || ''
+        if (err?.code === 31005 || errMsg.includes('31005')) {
+          setError("Erreur passerelle (31005) : La passerelle Twilio a interrompu l'appel. Le Webhook vocal TwiML est injoignable ou le numéro d'appelant n'est pas autorisé sur Twilio.")
+        } else {
+          setError(errMsg || 'Erreur de connexion Twilio')
+        }
         setCallStatus('ended')
         setTimeout(() => setCallStatus('idle'), 2000)
       })
@@ -174,6 +182,10 @@ const useTwilio = () => {
     }
   }, [simulationMode, initDevice])
 
+  const clearError = useCallback(() => {
+    setError(null)
+  }, [])
+
   const hangup = useCallback(() => {
     clearTimeout(simTimerRef.current)
     if (callRef.current) {
@@ -184,6 +196,7 @@ const useTwilio = () => {
     setCallStatus('ended')
     setIsMuted(false)
     setIsOnHold(false)
+    setError(null)
     setTimeout(() => setCallStatus('idle'), 2000)
   }, [])
 
@@ -267,6 +280,7 @@ const useTwilio = () => {
     device,
     simulationMode,
     error,
+    clearError,
     initDevice,
     makeCall,
     hangup,
