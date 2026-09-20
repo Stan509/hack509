@@ -45,7 +45,7 @@ const STATUS_DISPLAY = {
 
 export default function CallControls() {
   const { currentContact, callStatus, setCallStatus, callTimer, formatTimer, dialNext, hangUp, queue, autoDial, setAutoDial, toggleFavoriteContact, ringTimeout, setRingTimeout, ringTimer, ringTimeoutActive } = useDialer()
-  const { makeCall, hangup, hold, mute, isMuted, isOnHold, isReady, simulationMode, error, clearError, providerType, switchProvider, callStatus: telephonyCallStatus } = useTelephony()
+  const { makeCall, hangup, hold, mute, isMuted, isOnHold, isReady, simulationMode, error, clearError, providerType, switchProvider, callStatus: telephonyCallStatus, activeCall } = useTelephony()
 
   const [browserOpen, setBrowserOpen] = useState(false)
   const [browserTarget, setBrowserTarget] = useState('tps')

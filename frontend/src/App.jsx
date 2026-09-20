@@ -11,13 +11,16 @@ import CallHistory from './pages/CallHistory.jsx'
 import Settings from './pages/Settings.jsx'
 import UserManagement from './pages/UserManagement.jsx'
 import IncomingTransferModal from './components/IncomingTransferModal.jsx'
+import ErrorBoundary from './components/ErrorBoundary.jsx'
 
 function Layout({ children }) {
   return (
     <div className="min-h-screen bg-bg-primary flex flex-col">
       <Navbar />
       <main className="flex-1 overflow-auto">
-        {children}
+        <ErrorBoundary>
+          {children}
+        </ErrorBoundary>
       </main>
       <IncomingTransferModal />
     </div>
