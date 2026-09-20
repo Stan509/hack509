@@ -35,17 +35,17 @@ function VUBars({ active }) {
 }
 
 const STATUS_DISPLAY = {
-  idle:     { label: 'STANDBY',  color: '#3d5a3d', pulse: false },
-  dialing:  { label: 'DIALING', color: '#ff9900', pulse: true },
-  ringing:  { label: 'RINGING', color: '#ff9900', pulse: true },
-  active:   { label: 'LIVE CALL', color: '#00ff66', pulse: true },
-  holding:  { label: 'ON HOLD', color: '#00d4ff', pulse: false },
-  ended:    { label: 'CALL ENDED', color: '#ff2244', pulse: false },
+  idle:     { label: 'DISPONIBLE',  color: '#3d5a3d', pulse: false },
+  dialing:  { label: 'COMPOSITION...', color: '#ff9900', pulse: true },
+  ringing:  { label: 'SONNERIE...', color: '#ff9900', pulse: true },
+  active:   { label: 'APPEL EN COURS', color: '#00ff66', pulse: true },
+  holding:  { label: 'EN ATTENTE (HOLD)', color: '#00d4ff', pulse: true },
+  ended:    { label: 'APPEL TERMINÉ', color: '#ff2244', pulse: false },
 }
 
 export default function CallControls() {
-  const { currentContact, callStatus, callTimer, formatTimer, dialNext, hangUp, queue, autoDial, setAutoDial, toggleFavoriteContact, ringTimeout, setRingTimeout, ringTimer, ringTimeoutActive } = useDialer()
-  const { makeCall, hangup, hold, mute, isMuted, isOnHold, isReady, simulationMode, error, clearError, providerType, switchProvider } = useTelephony()
+  const { currentContact, callStatus, setCallStatus, callTimer, formatTimer, dialNext, hangUp, queue, autoDial, setAutoDial, toggleFavoriteContact, ringTimeout, setRingTimeout, ringTimer, ringTimeoutActive } = useDialer()
+  const { makeCall, hangup, hold, mute, isMuted, isOnHold, isReady, simulationMode, error, clearError, providerType, switchProvider, callStatus: telephonyCallStatus } = useTelephony()
 
   const [browserOpen, setBrowserOpen] = useState(false)
   const [browserTarget, setBrowserTarget] = useState('tps')
@@ -77,8 +77,33 @@ export default function CallControls() {
     }
   }
 
-  const statusCfg = STATUS_DISPLAY[callStatus] || STATUS_DISPLAY.idle
-  const isCallActive = callStatus === 'active' || callStatus === 'holding'
+  // Sync telephony call state with dialer
+  useEffect(() => {
+    if (telephonyCallStatus === 'active') {
+      setCallStatus('active')
+    } else if (telephonyCallStatus === 'holding') {
+      setCallStatus('holding')
+    } else if (telephonyCallStatus === 'ringing') {
+      setCallStatus('ringing')
+    } else if (telephonyCallStatus === 'ended') {
+      setCallStatus('ended')
+    } else if (telephonyCallStatus === 'idle' && (callStatus === 'active' || callStatus === 'holding')) {
+      handleHangup()
+    }
+  }, [telephonyCallStatus])
+
+  // If isOnHold toggles, ensure dialer status reflects it
+  useEffect(() => {
+    if (isOnHold && callStatus === 'active') {
+      setCallStatus('holding')
+    } else if (!isOnHold && callStatus === 'holding') {
+      setCallStatus('active')
+    }
+  }, [isOnHold])
+
+  const effectiveStatus = (telephonyCallStatus && telephonyCallStatus !== 'idle') ? telephonyCallStatus : callStatus
+  const statusCfg = STATUS_DISPLAY[effectiveStatus] || STATUS_DISPLAY.idle
+  const isCallActive = callStatus === 'active' || callStatus === 'holding' || telephonyCallStatus === 'active' || telephonyCallStatus === 'holding' || isOnHold
   const isInProgress = callStatus !== 'idle' && callStatus !== 'ended'
 
   const lastCalledContactId = useRef(null)
@@ -290,15 +315,26 @@ export default function CallControls() {
               )}
             </div>
 
-            {/* Timer */}
+            {/* Call Timer Display */}
             {isCallActive && (
               <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="text-neon-warn font-mono text-xl font-bold tracking-widest"
-                style={{ textShadow: '0 0 10px #ff9900' }}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="mt-2 mb-1 px-4 py-2 rounded border font-mono flex items-center justify-center gap-3"
+                style={{
+                  background: 'rgba(0, 255, 102, 0.08)',
+                  borderColor: 'rgba(0, 255, 102, 0.4)',
+                  boxShadow: '0 0 15px rgba(0, 255, 102, 0.15)',
+                }}
               >
-                {formatTimer(callTimer)}
+                <span className="w-2.5 h-2.5 rounded-full bg-neon-green animate-pulse" />
+                <span className="text-xs text-text-muted tracking-wider uppercase">TEMPS D'APPEL:</span>
+                <span
+                  className="text-2xl font-bold tracking-widest"
+                  style={{ color: '#00ff66', textShadow: '0 0 12px rgba(0, 255, 102, 0.6)' }}
+                >
+                  {formatTimer(callTimer)}
+                </span>
               </motion.div>
             )}
 
@@ -373,16 +409,18 @@ export default function CallControls() {
             whileTap={{ scale: 0.97 }}
             onClick={() => mute()}
             disabled={!isCallActive}
-            className="btn-cyber py-2 text-xs rounded"
+            className="btn-cyber py-2.5 text-xs rounded font-mono font-bold flex items-center justify-center gap-1.5 transition-all"
             style={{
-              opacity: !isCallActive ? 0.4 : 1,
+              opacity: !isCallActive ? 0.35 : 1,
+              cursor: !isCallActive ? 'not-allowed' : 'pointer',
               borderColor: isMuted ? '#ff2244' : undefined,
               color: isMuted ? '#ff2244' : undefined,
-              background: isMuted ? 'rgba(255,34,68,0.1)' : undefined,
-              boxShadow: isMuted ? '0 0 8px rgba(255,34,68,0.4)' : undefined,
+              background: isMuted ? 'rgba(255,34,68,0.15)' : undefined,
+              boxShadow: isMuted ? '0 0 10px rgba(255,34,68,0.4)' : undefined,
             }}
           >
-            {isMuted ? '🔇 MUTED' : '🔊 MUTE'}
+            <span>{isMuted ? '🔇' : '🎤'}</span>
+            <span>{isMuted ? 'MUET (MUTED)' : 'MUTE'}</span>
           </motion.button>
 
           {/* HOLD */}
@@ -391,16 +429,18 @@ export default function CallControls() {
             whileTap={{ scale: 0.97 }}
             onClick={hold}
             disabled={!isCallActive}
-            className="btn-cyber py-2 text-xs rounded"
+            className="btn-cyber py-2.5 text-xs rounded font-mono font-bold flex items-center justify-center gap-1.5 transition-all"
             style={{
-              opacity: !isCallActive ? 0.4 : 1,
+              opacity: !isCallActive ? 0.35 : 1,
+              cursor: !isCallActive ? 'not-allowed' : 'pointer',
               borderColor: isOnHold ? '#00d4ff' : undefined,
               color: isOnHold ? '#00d4ff' : undefined,
-              background: isOnHold ? 'rgba(0,212,255,0.1)' : undefined,
-              boxShadow: isOnHold ? '0 0 8px rgba(0,212,255,0.4)' : undefined,
+              background: isOnHold ? 'rgba(0,212,255,0.15)' : undefined,
+              boxShadow: isOnHold ? '0 0 12px rgba(0,212,255,0.4)' : undefined,
             }}
           >
-            {isOnHold ? '▶ UNHOLD' : '⏸ HOLD'}
+            <span>{isOnHold ? '▶' : '⏸'}</span>
+            <span>{isOnHold ? 'REPRENDRE' : 'EN ATTENTE'}</span>
           </motion.button>
         </div>
 

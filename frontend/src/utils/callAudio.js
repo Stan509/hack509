@@ -5,6 +5,8 @@ class CallAudioEngine {
     this.ctx = null
     this.dialingInterval = null
     this.isPlayingDialing = false
+    this.holdInterval = null
+    this.isPlayingHold = false
   }
 
   init() {
@@ -68,6 +70,7 @@ class CallAudioEngine {
   // 2. Son d'Appel Connecté (Call Connected Chime - ascending notes)
   playConnectedSound() {
     this.stopDialingSound()
+    this.stopHoldMusic()
     this.init()
     if (!this.ctx) return
 
@@ -96,6 +99,7 @@ class CallAudioEngine {
   // 3. Son d'Appel Terminé (Call Ended Chime - descending notes)
   playEndedSound() {
     this.stopDialingSound()
+    this.stopHoldMusic()
     this.init()
     if (!this.ctx) return
 
@@ -118,6 +122,54 @@ class CallAudioEngine {
       osc.stop(now + 0.35)
     } catch (err) {
       console.warn('Ended audio error:', err)
+    }
+  }
+
+  // 4. Musique de Mise en Attente (Hold Music / Soothing Chime on Hold)
+  startHoldMusic() {
+    this.stopDialingSound()
+    this.init()
+    if (!this.ctx || this.isPlayingHold) return
+    this.isPlayingHold = true
+
+    // Chords: E major / C# minor soothing arpeggio notes
+    const notes = [329.63, 392.00, 493.88, 587.33, 493.88, 392.00]
+    let noteIndex = 0
+
+    const playChordNote = () => {
+      if (!this.isPlayingHold || !this.ctx) return
+      try {
+        const now = this.ctx.currentTime
+        const osc = this.ctx.createOscillator()
+        const gain = this.ctx.createGain()
+
+        osc.type = 'sine'
+        const freq = notes[noteIndex % notes.length]
+        noteIndex++
+
+        osc.frequency.setValueAtTime(freq, now)
+        gain.gain.setValueAtTime(0.06, now)
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.9)
+
+        osc.connect(gain)
+        gain.connect(this.ctx.destination)
+
+        osc.start(now)
+        osc.stop(now + 0.9)
+      } catch (err) {
+        console.warn('Hold audio error:', err)
+      }
+    }
+
+    playChordNote()
+    this.holdInterval = setInterval(playChordNote, 1000)
+  }
+
+  stopHoldMusic() {
+    this.isPlayingHold = false
+    if (this.holdInterval) {
+      clearInterval(this.holdInterval)
+      this.holdInterval = null
     }
   }
 }

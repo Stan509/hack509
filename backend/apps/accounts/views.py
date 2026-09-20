@@ -81,14 +81,27 @@ class MeView(APIView):
 # User management (admin only) - mounted at /api/users/
 # =============================================================================
 
-class UserListView(generics.ListAPIView):
+class UserListView(generics.ListCreateAPIView):
     """
-    GET /api/users/
-    Admin only: List all users.
+    GET  /api/users/ - Admin only: List all users.
+    POST /api/users/ - Admin only: Create a new operator / user.
     """
     permission_classes = [IsAuthenticated, IsAdmin]
-    serializer_class = UserSerializer
     queryset = CustomUser.objects.all().order_by('-created_at')
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return UserCreateSerializer
+        return UserSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        if request.data.get('is_staff') or user.role == 'admin':
+            user.is_staff = True
+            user.save(update_fields=['is_staff'])
+        return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
 
 class UserDetailView(APIView):

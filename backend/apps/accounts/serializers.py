@@ -53,19 +53,23 @@ class UserCreateSerializer(serializers.ModelSerializer):
         required=True,
         validators=[validate_password]
     )
-    password2 = serializers.CharField(write_only=True, required=True)
+    password2 = serializers.CharField(write_only=True, required=False, allow_blank=True, default='')
+    email = serializers.EmailField(required=False, allow_blank=True, default='')
+    first_name = serializers.CharField(required=False, allow_blank=True, default='')
+    last_name = serializers.CharField(required=False, allow_blank=True, default='')
 
     class Meta:
         model = CustomUser
         fields = ['username', 'email', 'first_name', 'last_name', 'role', 'password', 'password2']
 
     def validate(self, attrs):
-        if attrs['password'] != attrs['password2']:
+        p2 = attrs.get('password2')
+        if p2 and attrs.get('password') != p2:
             raise serializers.ValidationError({'password': "Password fields didn't match."})
         return attrs
 
     def create(self, validated_data):
-        validated_data.pop('password2')
+        validated_data.pop('password2', None)
         password = validated_data.pop('password')
         user = CustomUser(**validated_data)
         user.set_password(password)

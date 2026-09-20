@@ -25,23 +25,37 @@ export function DialerProvider({ children }) {
   const [lastEvent, setLastEvent] = useState(null)
   const [callTimer, setCallTimer] = useState(0)
   const callTimerRef = useRef(null)
+  const callDurationRef = useRef(0)
 
   const [ringTimeout, setRingTimeout] = useState(12) // default 12s timeout for unassigned/no-answer
   const [ringTimer, setRingTimer] = useState(12)
   const [ringTimeoutActive, setRingTimeoutActive] = useState(false)
   const ringTimerRef = useRef(null)
 
-  // Timer for active calls
+  // Timer for active or holding calls
   useEffect(() => {
-    if (callStatus === 'active') {
-      callTimerRef.current = setInterval(() => {
-        setCallTimer((t) => t + 1)
-      }, 1000)
+    if (callStatus === 'active' || callStatus === 'holding') {
+      if (!callTimerRef.current) {
+        callTimerRef.current = setInterval(() => {
+          setCallTimer((t) => {
+            const next = t + 1
+            callDurationRef.current = next
+            return next
+          })
+        }, 1000)
+      }
     } else {
       clearInterval(callTimerRef.current)
-      if (callStatus === 'idle' || callStatus === 'ended') setCallTimer(0)
+      callTimerRef.current = null
+      if (callStatus === 'idle' || callStatus === 'ended') {
+        setCallTimer(0)
+        callDurationRef.current = 0
+      }
     }
-    return () => clearInterval(callTimerRef.current)
+    return () => {
+      clearInterval(callTimerRef.current)
+      callTimerRef.current = null
+    }
   }, [callStatus])
 
   const connect = useCallback(() => {
@@ -172,7 +186,47 @@ export function DialerProvider({ children }) {
     sendCommand('resume_queue', {})
   }, [sendCommand])
 
-  const hangUp = useCallback(() => {
+  const recordCallLog = useCallback(async ({ contact, duration, outcome, notes, callSid }) => {
+    if (!api) return
+    try {
+      const dur = typeof duration === 'number' ? duration : 0
+      const payload = {
+        duration: dur,
+        status: outcome || (dur > 0 ? 'answered' : 'no_answer'),
+        notes: notes || '',
+        call_sid: callSid || '',
+      }
+      if (contact?.id && typeof contact.id === 'number') {
+        payload.contact = contact.id
+      } else if (contact?.phone) {
+        payload.phone = contact.phone
+      }
+      if (contact?.first_name) payload.first_name = contact.first_name
+      if (contact?.last_name) payload.last_name = contact.last_name
+
+      await api.post('/api/calls/', payload)
+      console.log('[DialerContext] Call logged to /api/calls/:', payload)
+    } catch (err) {
+      console.warn('[DialerContext] Failed to log call to /api/calls/:', err)
+    }
+  }, [api])
+
+  const hangUp = useCallback((callSid = '') => {
+    const elapsed = callDurationRef.current || callTimer
+    const contactToLog = currentContact
+    const wasAnswered = elapsed > 0 || callStatus === 'active' || callStatus === 'holding'
+    const finalOutcome = wasAnswered ? 'answered' : 'no_answer'
+
+    if (contactToLog) {
+      recordCallLog({
+        contact: contactToLog,
+        duration: elapsed,
+        outcome: finalOutcome,
+        notes: wasAnswered ? `Appel complété (${elapsed}s)` : 'Appel interrompu ou sans réponse',
+        callSid,
+      })
+    }
+
     setCallStatus('ended')
     sendCommand('hangup', { contact_id: currentContact?.id })
 
@@ -192,7 +246,7 @@ export function DialerProvider({ children }) {
         return prevQueue
       }
     })
-  }, [currentContact, autoDial, queuePaused, sendCommand])
+  }, [callTimer, callStatus, currentContact, autoDial, queuePaused, recordCallLog, sendCommand])
 
   const toggleFavoriteContact = useCallback(async (contact) => {
     if (!contact || !contact.id) return
@@ -227,11 +281,20 @@ export function DialerProvider({ children }) {
   }, [sendCommand])
 
   const logCallOutcome = useCallback(async (outcome, notes) => {
+    const elapsed = callDurationRef.current || callTimer
     sendCommand('log_outcome', {
       contact_id: currentContact?.id,
       outcome,
       notes,
     })
+    if (currentContact) {
+      await recordCallLog({
+        contact: currentContact,
+        duration: elapsed,
+        outcome,
+        notes,
+      })
+    }
     if (api && currentContact?.id && typeof currentContact.id === 'number') {
       try {
         await api.patch(`/api/contacts/${currentContact.id}/`, { status: outcome, notes })
@@ -239,7 +302,7 @@ export function DialerProvider({ children }) {
         console.warn('Failed to update status in DB:', err)
       }
     }
-  }, [api, currentContact, sendCommand])
+  }, [api, callTimer, currentContact, recordCallLog, sendCommand])
 
   const handleRingTimeout = useCallback(async () => {
     if (currentContact) {
@@ -319,6 +382,7 @@ export function DialerProvider({ children }) {
       removeFromQueue,
       toggleFavoriteContact,
       logCallOutcome,
+      recordCallLog,
       sendCommand,
       connect,
     }}>

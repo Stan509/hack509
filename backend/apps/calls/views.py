@@ -32,7 +32,17 @@ class CallLogListCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        queryset = CallLog.objects.all().select_related('contact', 'operator')
+        queryset = CallLog.objects.all().select_related('contact', 'operator').order_by('-timestamp')
+
+        # Filter by search term
+        search = request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(
+                Q(contact__first_name__icontains=search) |
+                Q(contact__last_name__icontains=search) |
+                Q(contact__phone__icontains=search) |
+                Q(notes__icontains=search)
+            )
 
         # Filter by operator
         operator_id = request.query_params.get('operator')
@@ -53,6 +63,14 @@ class CallLogListCreateView(APIView):
         date_filter = request.query_params.get('date')
         if date_filter:
             queryset = queryset.filter(timestamp__date=date_filter)
+
+        date_from = request.query_params.get('date_from')
+        if date_from:
+            queryset = queryset.filter(timestamp__date__gte=date_from)
+
+        date_to = request.query_params.get('date_to')
+        if date_to:
+            queryset = queryset.filter(timestamp__date__lte=date_to)
 
         paginator = CallLogPagination()
         page = paginator.paginate_queryset(queryset, request)

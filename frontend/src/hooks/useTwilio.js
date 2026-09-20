@@ -188,8 +188,12 @@ const useTwilio = () => {
 
   const hangup = useCallback(() => {
     clearTimeout(simTimerRef.current)
+    callAudio.stopHoldMusic()
+    callAudio.stopDialingSound()
     if (callRef.current) {
-      callRef.current.disconnect()
+      try {
+        callRef.current.disconnect()
+      } catch {}
       callRef.current = null
     }
     setActiveCall(null)
@@ -201,30 +205,34 @@ const useTwilio = () => {
   }, [])
 
   const hold = useCallback(() => {
-    if (simulationMode) {
-      setIsOnHold((prev) => !prev)
-      setCallStatus((prev) => prev === 'active' ? 'holding' : 'active')
-      return
+    const newHold = !isOnHold
+    setIsOnHold(newHold)
+    setCallStatus(newHold ? 'holding' : 'active')
+    if (newHold) {
+      callAudio.startHoldMusic()
+    } else {
+      callAudio.stopHoldMusic()
     }
     if (callRef.current) {
-      const newHold = !isOnHold
-      callRef.current.mute(newHold)
-      setIsOnHold(newHold)
-      setCallStatus(newHold ? 'holding' : 'active')
+      try {
+        callRef.current.mute(newHold)
+      } catch (e) {
+        console.warn('Twilio mute/hold error:', e)
+      }
     }
-  }, [isOnHold, simulationMode])
+  }, [isOnHold])
 
   const mute = useCallback((forceMuted) => {
     const newMuted = forceMuted !== undefined ? forceMuted : !isMuted
-    if (simulationMode) {
-      setIsMuted(newMuted)
-      return
-    }
+    setIsMuted(newMuted)
     if (callRef.current) {
-      callRef.current.mute(newMuted)
-      setIsMuted(newMuted)
+      try {
+        callRef.current.mute(newMuted)
+      } catch (e) {
+        console.warn('Twilio mute error:', e)
+      }
     }
-  }, [isMuted, simulationMode])
+  }, [isMuted])
 
   const acceptIncoming = useCallback(() => {
     if (callRef.current) {
@@ -250,12 +258,18 @@ const useTwilio = () => {
 
   useEffect(() => {
     if (callStatus === 'connecting' || callStatus === 'ringing' || callStatus === 'dialing') {
+      callAudio.stopHoldMusic()
       callAudio.startDialingSound()
     } else if (callStatus === 'active') {
+      callAudio.stopHoldMusic()
       callAudio.playConnectedSound()
+    } else if (callStatus === 'holding') {
+      callAudio.startHoldMusic()
     } else if (callStatus === 'ended') {
+      callAudio.stopHoldMusic()
       callAudio.playEndedSound()
     } else if (callStatus === 'idle') {
+      callAudio.stopHoldMusic()
       callAudio.stopDialingSound()
     }
   }, [callStatus])
