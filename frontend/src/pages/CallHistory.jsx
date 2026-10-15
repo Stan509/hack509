@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext.jsx'
+import useTelephony from '../hooks/useTelephony.js'
 
 const STATUS_COLORS = {
   answered:     { label: 'ANSWERED',   color: '#00ff66' },
@@ -12,7 +13,7 @@ const STATUS_COLORS = {
   callback:     { label: 'CALLBACK',   color: '#00d4ff' },
 }
 
-function CallRow({ call, onSelect }) {
+function CallRow({ call, onSelect, onRecall }) {
   const statusCfg = STATUS_COLORS[call.status] || { label: call.status?.toUpperCase() || 'UNKNOWN', color: '#3d5a3d' }
   const duration = call.duration ? `${Math.floor(call.duration / 60)}m ${call.duration % 60}s` : '--'
 
@@ -41,11 +42,25 @@ function CallRow({ call, onSelect }) {
         {call.created_at ? new Date(call.created_at).toLocaleString() : '--'}
       </td>
       <td>
-        {call.notes && (
-          <span className="text-text-muted text-xs font-mono truncate max-w-24 block" title={call.notes}>
-            {call.notes.slice(0, 30)}{call.notes.length > 30 ? '...' : ''}
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {call.notes && (
+            <span className="text-text-muted text-xs font-mono truncate max-w-24 block" title={call.notes}>
+              {call.notes.slice(0, 30)}{call.notes.length > 30 ? '...' : ''}
+            </span>
+          )}
+          {call.phone && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onRecall(call.phone)
+              }}
+              className="px-2 py-1 text-[0.6rem] font-mono font-bold rounded-sm border border-neon-green text-neon-green bg-neon-green/10 hover:bg-neon-green/20 transition-all"
+            >
+              RAPPEL
+            </button>
+          )}
+        </div>
       </td>
     </motion.tr>
   )
@@ -53,6 +68,7 @@ function CallRow({ call, onSelect }) {
 
 export default function CallHistory() {
   const { api } = useAuth()
+  const { makeCall } = useTelephony()
   const [calls, setCalls] = useState([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -63,6 +79,15 @@ export default function CallHistory() {
   const [dateTo, setDateTo] = useState('')
   const [selectedCall, setSelectedCall] = useState(null)
   const PAGE_SIZE = 25
+
+  const handleRecall = (phone) => {
+    if (!phone) return
+    let clean = phone.trim()
+    if (!clean.startsWith('+') && !clean.startsWith('*') && !clean.startsWith('#')) {
+      clean = '+' + clean.replace(/[^0-9]/g, '')
+    }
+    makeCall(clean)
+  }
 
   const loadCalls = async () => {
     setLoading(true)
@@ -175,14 +200,14 @@ export default function CallHistory() {
         />
       </div>
 
-      {/* Table */}
+      {/* Table / mobile cards */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
         className="card-cyber rounded overflow-hidden"
       >
-        <div className="overflow-x-auto">
+        <div className="hidden md:block overflow-x-auto">
           <table className="table-cyber">
             <thead>
               <tr>
@@ -216,11 +241,60 @@ export default function CallHistory() {
                 </tr>
               ) : (
                 calls.map((call, i) => (
-                  <CallRow key={call.id || i} call={call} onSelect={setSelectedCall} />
+                  <CallRow key={call.id || i} call={call} onSelect={setSelectedCall} onRecall={handleRecall} />
                 ))
               )}
             </tbody>
           </table>
+        </div>
+
+        <div className="md:hidden p-3 space-y-3">
+          {loading ? (
+            <div className="text-center py-10 text-neon-green font-mono text-sm">◎ LOADING RECORDS...</div>
+          ) : calls.length === 0 ? (
+            <div className="text-center py-10 text-text-muted text-xs font-mono">NO CALL RECORDS FOUND</div>
+          ) : calls.map((call, i) => (
+            <motion.div
+              key={call.id || i}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="rounded-sm p-3 border border-neon-green/20 bg-black/20"
+              onClick={() => setSelectedCall(call)}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-sm font-mono font-bold text-text-terminal truncate">
+                    {call.contact_name || `${call.first_name || ''} ${call.last_name || ''}`.trim() || 'Unknown'}
+                  </div>
+                  <div className="text-xs font-mono text-neon-dim mt-1">{call.phone || '--'}</div>
+                </div>
+                <span
+                  className="badge-cyber rounded-sm text-[0.6rem]"
+                  style={{ color: STATUS_COLORS[call.status]?.color || '#00ff66', background: `${STATUS_COLORS[call.status]?.color || '#00ff66'}18`, border: `1px solid ${(STATUS_COLORS[call.status]?.color || '#00ff66')}44` }}
+                >
+                  {STATUS_COLORS[call.status]?.label || call.status?.toUpperCase() || 'UNKNOWN'}
+                </span>
+              </div>
+
+              <div className="mt-3 flex items-center justify-between text-[0.6rem] font-mono text-text-muted">
+                <span>{call.duration ? `${Math.floor(call.duration / 60)}m ${call.duration % 60}s` : '--'}</span>
+                <span>{call.created_at ? new Date(call.created_at).toLocaleString() : '--'}</span>
+              </div>
+
+              {call.phone && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleRecall(call.phone)
+                  }}
+                  className="mt-3 w-full px-3 py-2 text-[0.65rem] font-mono font-bold rounded-sm border border-neon-green text-neon-green bg-neon-green/10"
+                >
+                  RAPPEL
+                </button>
+              )}
+            </motion.div>
+          ))}
         </div>
 
         {/* Pagination */}
@@ -285,6 +359,18 @@ export default function CallHistory() {
                     {selectedCall.notes}
                   </div>
                 </div>
+              )}
+              {selectedCall.phone && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleRecall(selectedCall.phone)
+                    setSelectedCall(null)
+                  }}
+                  className="w-full mt-2 px-3 py-2 text-xs font-mono font-bold rounded-sm border border-neon-green text-neon-green bg-neon-green/10 hover:bg-neon-green/20 transition-all"
+                >
+                  RAPPELER CE NUMÉRO
+                </button>
               )}
             </div>
           </motion.div>

@@ -648,41 +648,41 @@ export default function Contacts() {
   const totalPages = Math.ceil(total / PAGE_SIZE)
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-3 md:p-6 space-y-4 md:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
-          <div className="terminal-header mb-1">Database</div>
-          <h1 className="text-xl font-mono font-bold" style={{ color: '#00ff66', textShadow: '0 0 10px #00ff66' }}>
-            LEAD DATABASE
-            <span className="ml-3 text-sm font-normal text-text-muted">
+          <div className="terminal-header mb-1 text-[0.65rem] md:text-xs">Database</div>
+          <h1 className="text-lg md:text-xl font-mono font-bold" style={{ color: '#00ff66', textShadow: '0 0 10px #00ff66' }}>
+            BASE DE CONTACTS
+            <span className="ml-2 text-xs md:text-sm font-normal text-text-muted">
               [{total.toLocaleString()} CONTACTS]
             </span>
           </h1>
         </motion.div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <button
             onClick={() => handleOpenBrowser('tps', '')}
-            className="btn-cyber px-3 py-2 text-xs rounded-sm font-bold flex items-center gap-1.5 cursor-pointer"
+            className="btn-cyber flex-1 sm:flex-initial px-3 py-2 text-xs rounded-sm font-bold flex items-center justify-center gap-1.5 cursor-pointer"
             style={{ borderColor: '#00d4ff', color: '#00d4ff', background: 'rgba(0, 212, 255, 0.12)' }}
             title="Ouvrir le site TruePeopleSearch dans le navigateur embarqué"
           >
-            <span>🔎 RECHERCHE TPS</span>
+            <span>🔎 TPS</span>
           </button>
           <button
             onClick={() => handleOpenBrowser('fps', '')}
-            className="btn-cyber px-3 py-2 text-xs rounded-sm font-bold flex items-center gap-1.5 cursor-pointer"
+            className="btn-cyber flex-1 sm:flex-initial px-3 py-2 text-xs rounded-sm font-bold flex items-center justify-center gap-1.5 cursor-pointer"
             style={{ borderColor: '#ff9900', color: '#ff9900', background: 'rgba(255, 153, 0, 0.12)' }}
             title="Ouvrir le site FastPeopleSearch dans le navigateur embarqué"
           >
-            <span>⚡ RECHERCHE FPS</span>
+            <span>⚡ FPS</span>
           </button>
           <button
             onClick={() => { setShowImport(!showImport); if (!showImport) setShowGenerator(false) }}
-            className="btn-cyber px-4 py-2 text-xs rounded-sm font-bold cursor-pointer"
+            className="btn-cyber w-full sm:w-auto px-4 py-2 text-xs rounded-sm font-bold cursor-pointer text-center justify-center"
             style={{ borderColor: '#00ff66', color: '#00ff66' }}
           >
-            {showImport ? '✕ CLOSE' : '⬆ IMPORT CSV'}
+            {showImport ? '✕ FERMER' : '⬆ IMPORT CSV'}
           </button>
         </div>
       </div>
@@ -714,25 +714,25 @@ export default function Contacts() {
       </AnimatePresence>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3">
-        <div className="relative flex-1 min-w-48">
+      <div className="flex flex-wrap items-center gap-2.5">
+        <div className="relative flex-1 min-w-[180px]">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted text-sm">⌕</span>
           <input
             type="text"
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1) }}
             className="input-cyber w-full pl-8 pr-4 py-2 text-xs rounded-sm"
-            placeholder="SEARCH CONTACTS..."
+            placeholder="RECHERCHER CONTACTS..."
           />
         </div>
 
         <select
           value={statusFilter}
           onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}
-          className="input-cyber px-3 py-2 text-xs rounded-sm"
+          className="input-cyber px-3 py-2 text-xs rounded-sm flex-1 sm:flex-initial min-w-[130px]"
           style={{ background: '#080808' }}
         >
-          <option value="">ALL STATUS</option>
+          <option value="">TOUS LES STATUTS</option>
           {Object.entries(STATUS_COLORS).map(([key, val]) => (
             <option key={key} value={key}>{val.label}</option>
           ))}
@@ -740,27 +740,26 @@ export default function Contacts() {
 
         <button
           onClick={() => setFavoriteOnly(!favoriteOnly)}
-          className="btn-cyber px-3 py-2 text-xs rounded-sm font-bold flex items-center gap-1"
+          className="btn-cyber px-3 py-2 text-xs rounded-sm font-bold flex items-center justify-center gap-1 flex-1 sm:flex-initial"
           style={{
             borderColor: favoriteOnly ? '#ffcc00' : 'rgba(255,204,0,0.4)',
             color: favoriteOnly ? '#ffcc00' : '#888',
             background: favoriteOnly ? 'rgba(255,204,0,0.15)' : 'transparent',
           }}
         >
-          {favoriteOnly ? '⭐ FAVORIS (ACTIF)' : '☆ FAVORIS'}
+          {favoriteOnly ? '⭐ FAVORIS' : '☆ FAVORIS'}
         </button>
 
-        <button onClick={loadContacts} className="btn-cyber px-3 py-2 text-xs rounded-sm">
-          ↻ REFRESH
+        <button onClick={loadContacts} className="btn-cyber px-3 py-2 text-xs rounded-sm flex items-center justify-center gap-1 shrink-0">
+          ↻ ACTUALISER
         </button>
       </div>
 
       {/* Quick Phone Lookup Tool */}
-      <div className="card-cyber rounded p-4 flex flex-wrap items-center justify-between gap-4 border border-neon-green border-opacity-20" style={{ background: 'rgba(0, 255, 102, 0.02)' }}>
-        <div className="flex items-center gap-3 flex-1 min-w-64">
-          <span className="text-neon-green font-mono text-xs font-bold whitespace-nowrap">⚡ RECHERCHE DANS LE SYSTÈME:</span>
+      <div className="card-cyber rounded p-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 border border-neon-green/20" style={{ background: 'rgba(0, 255, 102, 0.02)' }}>
+        <div className="flex items-center gap-2 flex-1 min-w-0">
           <input
-            type="text"
+            type="tel"
             value={quickPhone}
             onChange={(e) => setQuickPhone(e.target.value)}
             onKeyDown={(e) => {
@@ -768,14 +767,12 @@ export default function Contacts() {
                 handleOpenBrowser('tps', quickPhone.trim())
               }
             }}
-            placeholder="Entrez un numéro (ex: 3055550199)..."
-            className="input-cyber px-3 py-1.5 text-xs rounded-sm flex-1 min-w-48"
+            placeholder="Recherche TPS/FPS par tél (+1...)"
+            className="input-cyber flex-1 px-3 py-2 text-xs rounded-sm font-mono min-w-0"
           />
-        </div>
-        <div className="flex items-center gap-2">
           <button
             onClick={() => handleOpenBrowser('tps', quickPhone.trim())}
-            className="btn-cyber px-3 py-1.5 text-xs rounded-sm font-bold flex items-center gap-1.5 cursor-pointer"
+            className="btn-cyber px-3 py-2 text-xs rounded-sm font-bold flex items-center gap-1 shrink-0"
             style={{ borderColor: '#00d4ff', color: '#00d4ff' }}
             title="Copier le numéro et ouvrir TruePeopleSearch"
           >
@@ -783,7 +780,7 @@ export default function Contacts() {
           </button>
           <button
             onClick={() => handleOpenBrowser('fps', quickPhone.trim())}
-            className="btn-cyber px-3 py-1.5 text-xs rounded-sm font-bold flex items-center gap-1.5 cursor-pointer"
+            className="btn-cyber px-3 py-2 text-xs rounded-sm font-bold flex items-center gap-1 shrink-0"
             style={{ borderColor: '#ff9900', color: '#ff9900' }}
             title="Copier le numéro et ouvrir FastPeopleSearch"
           >
@@ -831,7 +828,8 @@ export default function Contacts() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* Desktop Table View */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="table-cyber">
             <thead>
               <tr>
@@ -965,6 +963,119 @@ export default function Contacts() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile Cards View (Visible strictly on mobile < md) */}
+        <div className="md:hidden p-3 space-y-3">
+          {loading ? (
+            <div className="text-center py-12 text-neon-green font-mono text-sm">◎ CHARGEMENT DES CONTACTS...</div>
+          ) : contacts.length === 0 ? (
+            <div className="text-center py-12 text-text-muted text-xs font-mono">
+              AUCUN CONTACT TROUVÉ — {search ? 'ESSAYEZ UNE AUTRE RECHERCHE' : 'IMPORTEZ DES CONTACTS'}
+            </div>
+          ) : (
+            contacts.map((contact, i) => {
+              const statusCfg = STATUS_COLORS[contact.status] || { label: 'INCONNU', color: '#3d5a3d' }
+              const isChecked = selectedIds.has(contact.id)
+              return (
+                <motion.div
+                  key={contact.id || i}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={`rounded-sm p-3.5 border transition-all ${
+                    isChecked ? 'border-neon-green bg-neon-green/10' : 'border-neon-green/20 bg-black/40'
+                  }`}
+                >
+                  {/* Top row: Checkbox, Name, Favorite & Status badge */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => toggleSelectOne(contact.id)}
+                        className="cursor-pointer accent-neon-green w-4 h-4 shrink-0"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => toggleFavoriteContact(contact)}
+                        className="text-sm font-mono text-yellow-400 shrink-0"
+                        title={contact.is_favorite ? "Retirer des favoris" : "Ajouter aux favoris"}
+                      >
+                        {contact.is_favorite ? '⭐' : '☆'}
+                      </button>
+                      <div className="font-mono font-bold text-sm text-text-terminal truncate">
+                        {contact.first_name} {contact.last_name}
+                      </div>
+                    </div>
+                    <span
+                      className="badge-cyber rounded-sm text-[0.65rem] shrink-0"
+                      style={{
+                        color: statusCfg.color,
+                        background: `${statusCfg.color}18`,
+                        border: `1px solid ${statusCfg.color}44`,
+                      }}
+                    >
+                      {statusCfg.label}
+                    </span>
+                  </div>
+
+                  {/* Details row: Phone & Address */}
+                  <div className="mt-2.5 space-y-1 font-mono text-xs">
+                    <div className="text-neon-dim font-bold tracking-wider flex items-center gap-1.5">
+                      <span>📞</span>
+                      <span>{contact.phone}</span>
+                    </div>
+                    {contact.address && (
+                      <div className="text-text-muted text-[0.7rem] truncate flex items-center gap-1.5">
+                        <span>🏠</span>
+                        <span>{contact.address}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Mobile Action Buttons Grid */}
+                  <div className="grid grid-cols-4 gap-1.5 mt-3 pt-2.5 border-t border-white/10">
+                    <button
+                      type="button"
+                      onClick={() => addToQueue(contact)}
+                      className="btn-cyber py-2 text-[0.7rem] rounded-sm font-bold flex items-center justify-center gap-1"
+                      style={{ borderColor: '#00ff66', color: '#00ff66', background: 'rgba(0,255,102,0.1)' }}
+                      title="Ajouter à la file du dialer"
+                    >
+                      <span>+</span>
+                      <span>FILE</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenBrowser('tps', contact.phone || '', `${contact.first_name || ''} ${contact.last_name || ''}`.trim())}
+                      className="btn-cyber py-2 text-[0.7rem] rounded-sm font-bold flex items-center justify-center gap-1"
+                      style={{ borderColor: '#00d4ff', color: '#00d4ff' }}
+                    >
+                      <span>🔎</span>
+                      <span>TPS</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenBrowser('fps', contact.phone || '', `${contact.first_name || ''} ${contact.last_name || ''}`.trim())}
+                      className="btn-cyber py-2 text-[0.7rem] rounded-sm font-bold flex items-center justify-center gap-1"
+                      style={{ borderColor: '#ff9900', color: '#ff9900' }}
+                    >
+                      <span>⚡</span>
+                      <span>FPS</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedContact(contact)}
+                      className="btn-cyber py-2 text-[0.7rem] rounded-sm font-bold flex items-center justify-center gap-1 text-text-muted hover:text-white"
+                    >
+                      <span>👁</span>
+                      <span>VOIR</span>
+                    </button>
+                  </div>
+                </motion.div>
+              )
+            })
+          )}
         </div>
 
         {/* Pagination */}

@@ -62,7 +62,7 @@ def auto_provision_twilio_keys(config):
         # 2. Create or update TwiML App SID (AP...) for outbound voice calls
         default_voice_url = os.environ.get(
             'TWILIO_VOICE_URL',
-            os.environ.get('PUBLIC_APP_URL', 'https://hacker509.gaboomdriveos.com')
+            os.environ.get('PUBLIC_APP_URL', 'https://backend-seven-beige-48.vercel.app')
         ).rstrip('/') + '/api/calls/twiml/'
 
         if not config.twiml_app_sid or not config.twiml_app_sid.startswith('AP'):
@@ -70,7 +70,9 @@ def auto_provision_twilio_keys(config):
             new_app = client.applications.create(
                 friendly_name='Hacker509 Voice Application',
                 voice_url=default_voice_url,
-                voice_method='POST'
+                voice_method='POST',
+                voice_fallback_url='https://frontend-tawny-two-18.vercel.app/api/calls/twiml/',
+                voice_fallback_method='POST'
             )
             config.twiml_app_sid = new_app.sid
             modified = True
@@ -79,11 +81,14 @@ def auto_provision_twilio_keys(config):
             # Ensure existing TwiML App points to the active voice webhook URL
             try:
                 app = client.applications(config.twiml_app_sid).fetch()
-                if not app.voice_url or 'hack509-app-pezir.ondigitalocean.app' in app.voice_url:
+                outdated_hosts = ['hack509-app-pezir.ondigitalocean.app', 'trycloudflare.com', 'hacker509.gaboomdriveos.com']
+                if not app.voice_url or any(host in app.voice_url for host in outdated_hosts):
                     logger.info("Updating outdated TwiML App voice_url (%s) to %s", app.voice_url, default_voice_url)
                     client.applications(config.twiml_app_sid).update(
                         voice_url=default_voice_url,
-                        voice_method='POST'
+                        voice_method='POST',
+                        voice_fallback_url='https://frontend-tawny-two-18.vercel.app/api/calls/twiml/',
+                        voice_fallback_method='POST'
                     )
             except Exception as e_app:
                 logger.warning(f"Could not verify/update existing TwiML app voice_url: {e_app}")
@@ -352,13 +357,16 @@ class TwilioTestView(APIView):
                 try:
                     default_voice_url = os.environ.get(
                         'TWILIO_VOICE_URL',
-                        os.environ.get('PUBLIC_APP_URL', 'https://hacker509.gaboomdriveos.com')
+                        os.environ.get('PUBLIC_APP_URL', 'https://backend-seven-beige-48.vercel.app')
                     ).rstrip('/') + '/api/calls/twiml/'
                     app = client.applications(cfg['twiml_app_sid']).fetch()
-                    if not app.voice_url or 'hack509-app-pezir.ondigitalocean.app' in app.voice_url:
+                    outdated_hosts = ['hack509-app-pezir.ondigitalocean.app', 'trycloudflare.com', 'hacker509.gaboomdriveos.com']
+                    if not app.voice_url or any(host in app.voice_url for host in outdated_hosts):
                         client.applications(cfg['twiml_app_sid']).update(
                             voice_url=default_voice_url,
-                            voice_method='POST'
+                            voice_method='POST',
+                            voice_fallback_url='https://frontend-tawny-two-18.vercel.app/api/calls/twiml/',
+                            voice_fallback_method='POST'
                         )
                         msg += f' | Webhook TwiML réparé ({default_voice_url})'
                     else:

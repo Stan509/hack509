@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext.jsx'
 import { DialerProvider } from './contexts/DialerContext.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
@@ -17,7 +17,7 @@ function Layout({ children }) {
   return (
     <div className="min-h-screen bg-bg-primary flex flex-col">
       <Navbar />
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-x-hidden overflow-y-auto pb-20 md:pb-0">
         <ErrorBoundary>
           {children}
         </ErrorBoundary>
@@ -27,9 +27,26 @@ function Layout({ children }) {
   )
 }
 
+function NotFound() {
+  return (
+    <div className="min-h-screen bg-bg-primary flex items-center justify-center p-6">
+      <div className="card-cyber rounded p-8 max-w-md w-full text-center">
+        <div className="text-neon-danger text-4xl mb-4">⚠</div>
+        <div className="text-neon-danger text-xl font-mono font-bold mb-2">PAGE NOT FOUND</div>
+        <div className="text-text-muted text-sm font-mono mb-6">
+          The route you requested does not exist.
+        </div>
+        <a href="#/" className="btn-cyber inline-block px-6 py-2 text-sm rounded">
+          ← RETURN HOME
+        </a>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <AuthProvider>
         <DialerProvider>
           <Routes>
@@ -94,10 +111,10 @@ export default function App() {
                 </ProtectedRoute>
               }
             />
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </DialerProvider>
       </AuthProvider>
-    </BrowserRouter>
+    </HashRouter>
   )
 }

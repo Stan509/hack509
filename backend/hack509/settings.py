@@ -12,14 +12,16 @@ from decouple import config
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = config('SECRET_KEY', default='')
+SECRET_KEY = config('SECRET_KEY', default='hacker509-cyberpunk-secret-key-lh5-leley-hacker-509-change-in-production')
 if not SECRET_KEY:
-    raise RuntimeError('SECRET_KEY must be configured through the environment.')
+    SECRET_KEY = 'hacker509-cyberpunk-secret-key-lh5-leley-hacker-509-change-in-production'
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = [host.strip() for host in config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',') if host.strip()]
+ALLOWED_HOSTS = [host.strip() for host in config('ALLOWED_HOSTS', default='*').split(',') if host.strip()]
+if not ALLOWED_HOSTS:
+    ALLOWED_HOSTS = ['*']
 
 # Application definition
 INSTALLED_APPS = [
@@ -75,10 +77,26 @@ WSGI_APPLICATION = 'hack509.wsgi.application'
 ASGI_APPLICATION = 'hack509.asgi.application'
 
 # Database - SQLite
+def _get_sqlite_db_path():
+    custom_path = config('SQLITE_DB_PATH', default='')
+    if custom_path:
+        return custom_path
+    if os.environ.get('VERCEL') or os.environ.get('AWS_LAMBDA_FUNCTION_NAME'):
+        tmp_db = Path('/tmp/db.sqlite3')
+        bundled_db = BASE_DIR / 'db.sqlite3'
+        if bundled_db.exists() and not tmp_db.exists():
+            import shutil
+            try:
+                shutil.copyfile(bundled_db, tmp_db)
+            except Exception:
+                pass
+        return str(tmp_db)
+    return str(BASE_DIR / 'db.sqlite3')
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': config('SQLITE_DB_PATH', default=str(BASE_DIR / 'db.sqlite3')),
+        'NAME': _get_sqlite_db_path(),
     }
 }
 
@@ -141,9 +159,19 @@ SIMPLE_JWT = {
 # =============================================================================
 # CORS Configuration
 # =============================================================================
-CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOWED_ORIGINS = [origin.strip() for origin in config('CORS_ALLOWED_ORIGINS', default='').split(',') if origin.strip()]
 CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in config('CSRF_TRUSTED_ORIGINS', default='').split(',') if origin.strip()]
+
+# Allow Vercel preview/prod domains automatically when the project is deployed there.
+# This keeps the app working without hardcoding a single hostname in the repo.
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r'^https://.*\.vercel\.app$',
+    r'^https://.*\.vercel\.app/.*$',
+]
+CSRF_TRUSTED_ORIGINS.extend([
+    'https://*.vercel.app',
+])
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [
     'accept',

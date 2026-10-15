@@ -3,7 +3,11 @@ import axios from 'axios'
 
 const AuthContext = createContext(null)
 
-const API_BASE = import.meta.env.VITE_API_BASE || ''
+const API_BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/+$/, '')
+
+function apiUrl(path) {
+  return API_BASE ? `${API_BASE}${path}` : path
+}
 
 // Create axios instance
 const api = axios.create({
@@ -50,7 +54,7 @@ export function AuthProvider({ children }) {
           const refreshToken = localStorage.getItem('h509_refresh')
           if (refreshToken) {
             try {
-              const res = await axios.post(`${API_BASE}/api/auth/refresh/`, { refresh: refreshToken })
+              const res = await axios.post(apiUrl('/api/auth/refresh/'), { refresh: refreshToken })
               const newToken = res.data.access
               localStorage.setItem('h509_token', newToken)
               api.defaults.headers.common['Authorization'] = `Bearer ${newToken}`
@@ -93,7 +97,7 @@ export function AuthProvider({ children }) {
         // Token expired, try refresh
         const refreshToken = localStorage.getItem('h509_refresh')
         if (refreshToken) {
-          axios.post(`${API_BASE}/api/auth/refresh/`, { refresh: refreshToken })
+          axios.post(apiUrl('/api/auth/refresh/'), { refresh: refreshToken })
             .then((res) => {
               const newToken = res.data.access
               localStorage.setItem('h509_token', newToken)
@@ -128,7 +132,7 @@ export function AuthProvider({ children }) {
   const login = useCallback(async (username, password) => {
     setError(null)
     try {
-      const res = await axios.post(`${API_BASE}/api/auth/login/`, { username, password })
+      const res = await axios.post(apiUrl('/api/auth/login/'), { username, password })
       const { access, refresh, user: apiUser } = res.data
       localStorage.setItem('h509_token', access)
       if (refresh) localStorage.setItem('h509_refresh', refresh)

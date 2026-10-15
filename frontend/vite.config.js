@@ -33,16 +33,26 @@ export default defineConfig({
     })
   ],
   server: {
-    port: 5173,
+    port: 5185,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:8005',
         changeOrigin: true,
         rewrite: (path) => path
       },
       '/ws': {
         target: 'ws://localhost:8001',
       }
+    }
+  },
+  esbuild: {
+    supported: {
+      'top-level-await': true
+    }
+  },
+  optimizeDeps: {
+    esbuildOptions: {
+      target: 'esnext'
     }
   },
   build: {

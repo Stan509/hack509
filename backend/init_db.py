@@ -59,7 +59,7 @@ admin_user, created = CustomUser.objects.get_or_create(
     username='admin',
     defaults={'email': 'admin@hacker509.local', 'role': 'admin', 'is_staff': True, 'is_superuser': True}
 )
-admin_user.set_password('admin123')
+admin_user.set_password('hacker509')
 admin_user.role = 'admin'
 admin_user.is_staff = True
 admin_user.is_superuser = True

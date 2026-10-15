@@ -202,7 +202,7 @@ export default function Dialer() {
   }, [isInCall])
 
   return (
-    <div className="h-[calc(100vh-52px)] flex flex-col overflow-hidden">
+    <div className="h-[calc(100vh-52px-60px)] md:h-[calc(100vh-52px)] flex flex-col overflow-hidden">
       {/* Page Header (Compact on mobile) */}
       <div className="px-3 md:px-6 py-2 md:py-3 border-b border-neon-green border-opacity-10 flex items-center justify-between flex-shrink-0 bg-black/40">
         <div>

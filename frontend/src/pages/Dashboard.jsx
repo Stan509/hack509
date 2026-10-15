@@ -135,16 +135,16 @@ export default function Dashboard() {
   const dateStr = clock.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-3 md:p-6 space-y-4 md:space-y-6">
       {/* Page Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
         <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
-          <div className="terminal-header mb-1">HACKER509 // MAIN TERMINAL</div>
-          <h1 className="text-2xl font-mono font-bold" style={{ color: '#00ff66', textShadow: '0 0 15px #00ff66' }}>
-            DASHBOARD
+          <div className="terminal-header mb-1 text-[0.65rem] md:text-xs">HACKER509 // TERMINAL CENTRAL</div>
+          <h1 className="text-xl md:text-2xl font-mono font-bold" style={{ color: '#00ff66', textShadow: '0 0 15px #00ff66' }}>
+            TABLEAU DE BORD
           </h1>
           <div className="text-text-muted text-xs font-mono mt-1">
-            Welcome, <span className="text-neon-green">{user?.username}</span> —{' '}
+            Opérateur : <span className="text-neon-green font-bold">{user?.username}</span> —{' '}
             <span className="text-neon-warn">{user?.role?.toUpperCase()}</span>
           </div>
         </motion.div>
@@ -153,30 +153,30 @@ export default function Dashboard() {
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
-          className="text-right card-cyber rounded p-3"
+          className="text-left sm:text-right card-cyber rounded p-2.5 sm:p-3 shrink-0"
         >
           <div
-            className="text-2xl font-mono font-bold"
+            className="text-lg md:text-2xl font-mono font-bold"
             style={{ color: '#00ff66', textShadow: '0 0 10px #00ff66', fontVariantNumeric: 'tabular-nums' }}
           >
             {timeStr}
           </div>
-          <div className="text-text-muted text-xs font-mono mt-1">{dateStr}</div>
+          <div className="text-text-muted text-[0.65rem] md:text-xs font-mono mt-0.5">{dateStr}</div>
         </motion.div>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 md:gap-4">
         <StatCard label="TOTAL CONTACTS" value={stats?.total_contacts?.toLocaleString() ?? '0'} icon="◈" loading={loading} />
-        <StatCard label="CALLS TODAY" value={stats?.calls_today?.toLocaleString() ?? '0'} icon="☎" color="#00d4ff" loading={loading} />
+        <StatCard label="APPELS DU JOUR" value={stats?.calls_today?.toLocaleString() ?? '0'} icon="☎" color="#00d4ff" loading={loading} />
         <StatCard
-          label="CONNECTION RATE"
+          label="TAUX DE CONNEXION"
           value={stats?.connection_rate != null ? `${stats.connection_rate.toFixed(1)}%` : '0%'}
           icon="◎"
           color="#ff9900"
           loading={loading}
         />
-        <StatCard label="ACTIVE OPERATORS" value={stats?.active_operators ?? '0'} icon="◉" color="#a855f7" loading={loading} />
+        <StatCard label="OPÉRATEURS ACTIFS" value={stats?.active_operators ?? '0'} icon="◉" color="#a855f7" loading={loading} />
       </div>
 
       {/* Quick Actions */}
@@ -184,28 +184,31 @@ export default function Dashboard() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.15 }}
-        className="flex flex-wrap gap-3"
+        className="grid grid-cols-1 sm:grid-cols-3 gap-2.5"
       >
         <button
           onClick={() => navigate('/dialer')}
-          className="btn-cyber px-6 py-3 text-sm rounded font-bold"
+          className="btn-cyber py-3 px-4 text-xs md:text-sm rounded font-bold flex items-center justify-center gap-2 cursor-pointer"
           style={{ boxShadow: '0 0 15px rgba(0,255,102,0.3)' }}
         >
-          ⚡ LAUNCH DIALER
+          <span>⚡</span>
+          <span>LANCER LE DIALER</span>
         </button>
         <button
           onClick={() => navigate('/contacts')}
-          className="btn-cyber px-6 py-3 text-sm rounded font-bold"
+          className="btn-cyber py-3 px-4 text-xs md:text-sm rounded font-bold flex items-center justify-center gap-2 cursor-pointer"
           style={{ borderColor: '#00d4ff', color: '#00d4ff' }}
         >
-          ⬆ IMPORT LEADS
+          <span>◈</span>
+          <span>BASE DE CONTACTS</span>
         </button>
         <button
           onClick={() => navigate('/history')}
-          className="btn-cyber px-6 py-3 text-sm rounded"
+          className="btn-cyber py-3 px-4 text-xs md:text-sm rounded flex items-center justify-center gap-2 cursor-pointer"
           style={{ borderColor: '#a855f7', color: '#a855f7' }}
         >
-          ◷ CALL HISTORY
+          <span>◷</span>
+          <span>HISTORIQUE DES APPELS</span>
         </button>
       </motion.div>
 

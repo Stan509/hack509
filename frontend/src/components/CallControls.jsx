@@ -44,13 +44,50 @@ const STATUS_DISPLAY = {
 }
 
 export default function CallControls() {
-  const { currentContact, callStatus, setCallStatus, callTimer, formatTimer, dialNext, hangUp, queue, autoDial, setAutoDial, toggleFavoriteContact, ringTimeout, setRingTimeout, ringTimer, ringTimeoutActive } = useDialer()
+  const { currentContact, setCurrentContact, callStatus, setCallStatus, callTimer, formatTimer, dialNext, hangUp, queue, autoDial, setAutoDial, toggleFavoriteContact, ringTimeout, setRingTimeout, ringTimer, ringTimeoutActive } = useDialer()
   const { makeCall, hangup, hold, mute, isMuted, isOnHold, isReady, simulationMode, error, clearError, providerType, switchProvider, callStatus: telephonyCallStatus, activeCall } = useTelephony()
 
   const [browserOpen, setBrowserOpen] = useState(false)
   const [browserTarget, setBrowserTarget] = useState('tps')
   const [browserToast, setBrowserToast] = useState('')
   const [transferModalOpen, setTransferModalOpen] = useState(false)
+  const [manualNumber, setManualNumber] = useState('')
+  const keypad = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '+', '0', '#']
+
+  const displayContact = manualNumber
+    ? {
+        id: 'manual_dial',
+        phone: manualNumber,
+        first_name: 'COMPOSE',
+        last_name: 'MANUEL',
+        name: 'COMPOSE',
+        is_favorite: false,
+      }
+    : currentContact
+
+  const sanitizeManualNumber = (value) => {
+    if (!value) return ''
+    const str = String(value).trim()
+    const startsWithPlus = str.startsWith('+')
+    const digits = str.replace(/[^0-9*#]/g, '').slice(0, 25)
+    return (startsWithPlus ? '+' : '') + digits
+  }
+
+  const handleManualKey = (key) => {
+    if (key === '+') {
+      setManualNumber((prev) => (prev.startsWith('+') ? prev : `+${prev}`))
+      return
+    }
+    setManualNumber((prev) => sanitizeManualNumber(`${prev}${key}`))
+  }
+
+  const handleTogglePlus = () => {
+    setManualNumber((prev) => (prev.startsWith('+') ? prev.slice(1) : `+${prev}`))
+  }
+
+  const handleManualBackspace = () => {
+    setManualNumber((prev) => prev.slice(0, -1))
+  }
 
   const handleOpenSearch = async (target) => {
     setBrowserTarget(target)
@@ -113,17 +150,51 @@ export default function CallControls() {
     if (callStatus === 'dialing' && currentContact?.phone) {
       if (lastCalledContactId.current !== currentContact.id) {
         lastCalledContactId.current = currentContact.id
-        makeCall(currentContact.phone)
+        let p = currentContact.phone.trim()
+        if (!p.startsWith('+') && !p.startsWith('*') && !p.startsWith('#') && p.length >= 7) {
+          p = '+' + p
+        }
+        makeCall(p)
       }
     }
   }, [callStatus, currentContact, makeCall])
 
   const handleDial = () => {
+    const rawDigits = manualNumber.trim()
+    if (rawDigits) {
+      let phone = sanitizeManualNumber(rawDigits)
+      if (!phone) return
+      if (!phone.startsWith('+') && !phone.startsWith('*') && !phone.startsWith('#')) {
+        phone = '+' + phone
+      }
+      setManualNumber(phone)
+      setCurrentContact({
+        id: `manual_${Date.now()}`,
+        phone,
+        first_name: 'COMPOSE',
+        last_name: 'MANUEL',
+        name: 'COMPOSE',
+        is_favorite: false,
+      })
+      makeCall(phone)
+      return
+    }
+
     if (currentContact?.phone) {
-      makeCall(currentContact.phone)
+      let phone = currentContact.phone.trim()
+      if (!phone.startsWith('+') && !phone.startsWith('*') && !phone.startsWith('#') && phone.length >= 7) {
+        phone = '+' + phone
+      }
+      makeCall(phone)
     } else {
       const next = dialNext()
-      if (next?.phone) makeCall(next.phone)
+      if (next?.phone) {
+        let phone = next.phone.trim()
+        if (!phone.startsWith('+') && !phone.startsWith('*') && !phone.startsWith('#') && phone.length >= 7) {
+          phone = '+' + phone
+        }
+        makeCall(phone)
+      }
     }
   }
 
@@ -245,9 +316,9 @@ export default function CallControls() {
 
       {/* Contact display */}
       <div className="text-center flex-1 flex flex-col items-center justify-center">
-        {currentContact ? (
+        {displayContact ? (
           <motion.div
-            key={currentContact.id}
+            key={displayContact.id || manualNumber || 'manual'}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="text-center"
@@ -262,30 +333,32 @@ export default function CallControls() {
                 color: '#00ff66',
               }}
             >
-              {(currentContact.first_name?.[0] || currentContact.name?.[0] || '?').toUpperCase()}
+              {(displayContact.first_name?.[0] || displayContact.name?.[0] || '?').toUpperCase()}
             </div>
 
             <div
               className="text-lg md:text-2xl font-mono font-bold mb-0.5 md:mb-1"
               style={{ color: '#00ff66', textShadow: '0 0 15px #00ff66' }}
             >
-              {currentContact.first_name} {currentContact.last_name || currentContact.name}
+              {displayContact.first_name} {displayContact.last_name || displayContact.name}
             </div>
             <div className="text-text-muted font-mono text-sm md:text-lg tracking-widest mb-1.5 md:mb-2 flex items-center justify-center gap-2 flex-wrap">
-              <span>{currentContact.phone}</span>
-              <button
-                onClick={() => toggleFavoriteContact(currentContact)}
-                className="text-xs font-mono px-2 py-0.5 rounded-sm border transition-all cursor-pointer hover:brightness-125"
-                style={{
-                  borderColor: currentContact.is_favorite ? '#ffcc00' : 'rgba(255,204,0,0.4)',
-                  color: currentContact.is_favorite ? '#ffcc00' : '#888',
-                  background: currentContact.is_favorite ? 'rgba(255,204,0,0.15)' : 'transparent',
-                  boxShadow: currentContact.is_favorite ? '0 0 10px rgba(255,204,0,0.3)' : 'none',
-                }}
-                title={currentContact.is_favorite ? "Retirer des favoris" : "Ajouter aux favoris"}
-              >
-                {currentContact.is_favorite ? '⭐ FAVORIS' : '☆ AJOUTER FAVORIS'}
-              </button>
+              <span>{displayContact.phone}</span>
+              {!manualNumber && currentContact && (
+                <button
+                  onClick={() => toggleFavoriteContact(currentContact)}
+                  className="text-xs font-mono px-2 py-0.5 rounded-sm border transition-all cursor-pointer hover:brightness-125"
+                  style={{
+                    borderColor: currentContact.is_favorite ? '#ffcc00' : 'rgba(255,204,0,0.4)',
+                    color: currentContact.is_favorite ? '#ffcc00' : '#888',
+                    background: currentContact.is_favorite ? 'rgba(255,204,0,0.15)' : 'transparent',
+                    boxShadow: currentContact.is_favorite ? '0 0 10px rgba(255,204,0,0.3)' : 'none',
+                  }}
+                  title={currentContact.is_favorite ? "Retirer des favoris" : "Ajouter aux favoris"}
+                >
+                  {currentContact.is_favorite ? '⭐ FAVORIS' : '☆ AJOUTER FAVORIS'}
+                </button>
+              )}
             </div>
 
             {/* Separate TPS & FPS Lookup Buttons */}
@@ -369,6 +442,83 @@ export default function CallControls() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* Manual dial keypad */}
+      <div className="w-full mt-3 mb-2">
+        <div className="terminal-header mb-1.5 text-[0.65rem] md:text-xs flex items-center justify-between">
+          <span>COMPOSITION MANUELLE</span>
+          <span className="text-neon-green text-[0.6rem] font-bold">FORMAT INTERNATIONAL (+...)</span>
+        </div>
+        <div className="flex items-center gap-1.5 mb-2">
+          {/* Dedicated [+] quick toggle button */}
+          <button
+            type="button"
+            onClick={handleTogglePlus}
+            className={`px-3 py-2 text-base font-mono font-bold rounded-sm min-h-[44px] transition-all cursor-pointer flex items-center justify-center shrink-0 border ${
+              manualNumber.startsWith('+')
+                ? 'bg-neon-green/20 text-neon-green border-neon-green shadow-[0_0_8px_rgba(0,255,102,0.4)]'
+                : 'bg-white/5 text-text-muted border-white/20 hover:text-neon-green hover:border-neon-green/50'
+            }`}
+            title="Activer/Désactiver l'indicatif international (+)"
+          >
+            +
+          </button>
+          <input
+            value={manualNumber}
+            onChange={(e) => setManualNumber(sanitizeManualNumber(e.target.value))}
+            placeholder="+1 809 555 1234"
+            className="input-cyber flex-1 px-3 py-2 text-sm md:text-base rounded-sm font-mono tracking-widest min-h-[44px]"
+            aria-label="Numéro à composer"
+          />
+          <button
+            type="button"
+            onClick={handleManualBackspace}
+            className="btn-cyber btn-danger px-3 py-2 text-sm rounded-sm font-bold min-h-[44px] shrink-0"
+            title="Effacer le dernier caractère"
+          >
+            ⌫
+          </button>
+          <button
+            type="button"
+            onClick={() => setManualNumber('')}
+            className="btn-cyber px-2.5 py-2 text-[0.65rem] md:text-xs rounded-sm font-bold min-h-[44px] shrink-0"
+            title="Tout effacer"
+          >
+            CLR
+          </button>
+        </div>
+
+        {/* Keypad grid with + key and * key */}
+        <div className="grid grid-cols-3 gap-2 md:gap-2.5">
+          {keypad.map((key) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => handleManualKey(key)}
+              className={`btn-cyber px-2 py-3 md:py-3.5 text-base md:text-lg font-mono font-bold rounded-sm min-h-[48px] md:min-h-[52px] cursor-pointer select-none ${
+                key === '+' ? 'text-neon-green border-neon-green/60 bg-neon-green/10 shadow-[0_0_8px_rgba(0,255,102,0.2)]' : ''
+              }`}
+            >
+              {key}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => handleManualKey('*')}
+            className="btn-cyber px-2 py-3 md:py-3.5 text-base md:text-lg font-mono font-bold rounded-sm min-h-[48px] md:min-h-[52px] cursor-pointer select-none"
+          >
+            *
+          </button>
+          <button
+            type="button"
+            onClick={handleManualBackspace}
+            className="btn-cyber btn-danger px-2 py-3 md:py-3.5 text-xs md:text-sm font-mono font-bold rounded-sm col-span-2 min-h-[48px] md:min-h-[52px] cursor-pointer select-none flex items-center justify-center gap-1.5"
+          >
+            <span>⌫</span>
+            <span>EFFACER</span>
+          </button>
+        </div>
       </div>
 
       {/* Call Controls */}

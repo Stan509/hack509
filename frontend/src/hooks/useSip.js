@@ -116,7 +116,13 @@ export default function useSip(sipConfig) {
       setError('PBX non enregistré. Vérifiez la configuration SIP et attendez le statut READY.')
       return null
     }
-    const target = UserAgent.makeURI(`sip:${to}@${sipConfig.domain}`)
+    let destination = (to || '').trim()
+    if (destination && !destination.startsWith('*') && !destination.startsWith('#') && destination.length >= 7) {
+      if (!destination.startsWith('+')) {
+        destination = '+' + destination
+      }
+    }
+    const target = UserAgent.makeURI(`sip:${destination}@${sipConfig.domain}`)
     if (!target) {
       setError('Numéro ou extension SIP invalide.')
       return null

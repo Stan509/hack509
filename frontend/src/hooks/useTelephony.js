@@ -3,7 +3,11 @@ import axios from 'axios'
 import useTwilio from './useTwilio.js'
 import useSip from './useSip.js'
 
-const API_BASE = import.meta.env.VITE_API_BASE || ''
+const API_BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/+$/, '')
+
+function apiUrl(path) {
+  return API_BASE ? `${API_BASE}${path}` : path
+}
 
 export default function useTelephony() {
   const [providerType, setProviderTypeState] = useState(() => {
@@ -30,7 +34,7 @@ export default function useTelephony() {
     if (!token) return
     try {
       setLoadingConfig(true)
-      const res = await axios.get(`${API_BASE}/api/twilio/token/`, {
+      const res = await axios.get(apiUrl('/api/twilio/token/'), {
         headers: { Authorization: `Bearer ${token}` },
       })
       const data = res.data || {}

@@ -2,7 +2,11 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import axios from 'axios'
 import { callAudio } from '../utils/callAudio.js'
 
-const API_BASE = import.meta.env.VITE_API_BASE || ''
+const API_BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/+$/, '')
+
+function apiUrl(path) {
+  return API_BASE ? `${API_BASE}${path}` : path
+}
 
 const useTwilio = () => {
   const [isReady, setIsReady] = useState(false)
@@ -22,7 +26,7 @@ const useTwilio = () => {
     const token = localStorage.getItem('h509_token')
     if (!token) return null
     try {
-      const res = await axios.get(`${API_BASE}/api/twilio/token/`, {
+      const res = await axios.get(apiUrl('/api/twilio/token/'), {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (res.data?.simulation || res.data?.token?.startsWith('mock_token')) {
@@ -154,8 +158,14 @@ const useTwilio = () => {
 
     try {
       setCallStatus('connecting')
+      let destination = (to || '').trim()
+      if (destination && !destination.startsWith('client:') && !destination.startsWith('*') && !destination.startsWith('#')) {
+        if (!destination.startsWith('+')) {
+          destination = '+' + destination
+        }
+      }
       const call = await deviceRef.current.connect({
-        params: { To: to, ...params },
+        params: { To: destination, ...params },
       })
       callRef.current = call
       setActiveCall(call)
