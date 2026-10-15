@@ -402,3 +402,191 @@ class BrowserAuthCheckView(APIView):
 
         return HttpResponse("Forbidden", status=403)
 
+
+class BrowserProxyRenderView(APIView):
+    """
+    GET /api/browser/render/
+    Fetches target page (TPS, FPS, or custom) using server US IP or configured proxy.
+    Returns rendered HTML with base href and frame headers so it opens seamlessly
+    inside the Hack509 embedded mini-browser iframe right in the project.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        token = request.query_params.get('token', '').strip()
+        auth_header = request.META.get('HTTP_AUTHORIZATION', '').strip()
+
+        authenticated = False
+        if request.user and request.user.is_authenticated:
+            authenticated = True
+        elif token:
+            from rest_framework_simplejwt.tokens import AccessToken
+            try:
+                AccessToken(token)
+                authenticated = True
+            except Exception:
+                pass
+        elif auth_header.startswith('Bearer '):
+            from rest_framework_simplejwt.tokens import AccessToken
+            try:
+                AccessToken(auth_header.split(' ', 1)[1])
+                authenticated = True
+            except Exception:
+                pass
+
+        if not authenticated:
+            return HttpResponse("Authentification requise pour le mini-navigateur.", status=401)
+
+        url = request.query_params.get('url', '').strip()
+        target = request.query_params.get('target', 'tps').strip().lower()
+        phone = request.query_params.get('phone', '').strip()
+
+        digits = ''.join(c for c in phone if c.isdigit())
+        if digits.startswith('1') and len(digits) == 11:
+            digits = digits[1:]
+
+        if not url:
+            if target == 'fps':
+                url = f"https://www.fastpeoplesearch.com/phone/{digits}" if digits else "https://www.fastpeoplesearch.com"
+            else:
+                url = f"https://www.truepeoplesearch.com/results?phoneno={digits}" if digits else "https://www.truepeoplesearch.com"
+
+        from .tps_service import is_allowed_url, get_area_code_info, clean_phone
+        from .proxy_service import get_active_proxies
+        import requests
+        import re
+
+        proxies = get_active_proxies()
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Referer': 'https://www.google.com/',
+        }
+
+        try:
+            resp = requests.get(url, headers=headers, proxies=proxies, timeout=7)
+            if resp.status_code == 200:
+                html = resp.text
+                base_domain = 'https://www.fastpeoplesearch.com' if 'fastpeoplesearch.com' in url else 'https://www.truepeoplesearch.com'
+
+                injected_head = f"""
+                <base href="{base_domain}/">
+                <style>
+                    ::-webkit-scrollbar {{ width: 8px; height: 8px; }}
+                    ::-webkit-scrollbar-track {{ background: #000; }}
+                    ::-webkit-scrollbar-thumb {{ background: #00ff66; border-radius: 4px; }}
+                    .hack509-floating-bar {{
+                        position: fixed; bottom: 12px; right: 12px; z-index: 999999;
+                        background: rgba(0,0,0,0.92); border: 1px solid #00ff66;
+                        color: #00ff66; padding: 6px 14px; font-family: monospace;
+                        font-size: 11px; border-radius: 4px; box-shadow: 0 0 15px rgba(0,255,102,0.3);
+                        pointer-events: none;
+                    }}
+                </style>
+                <div class="hack509-floating-bar">🛡️ MINI-NAVIGATEUR HACK509 // IP US ACTIVE</div>
+                """
+
+                if '<head>' in html:
+                    html = html.replace('<head>', f'<head>{injected_head}', 1)
+                else:
+                    html = injected_head + html
+
+                http_resp = HttpResponse(html, content_type='text/html; charset=utf-8')
+                http_resp['X-Frame-Options'] = 'ALLOWALL'
+                http_resp['Content-Security-Policy'] = "frame-ancestors *"
+                return http_resp
+        except Exception as e:
+            logger.warning(f"Browser proxy render error: {e}")
+
+        # Fallback interactive in-frame view
+        area_info = get_area_code_info(digits if digits else phone)
+        clean_num = clean_phone(phone) or (f"+1{digits}" if digits else area_info['phone'])
+        site_name = "FastPeopleSearch" if target == 'fps' else "TruePeopleSearch"
+        accent_color = "#ff9900" if target == 'fps' else "#00d4ff"
+
+        fallback_html = f"""
+        <!DOCTYPE html>
+        <html lang="fr">
+        <head>
+            <meta charset="utf-8">
+            <title>{site_name} // Mini-Navigateur Hack509</title>
+            <style>
+                body {{
+                    background: #080c10; color: #e2e8f0; font-family: 'Fira Code', monospace, sans-serif;
+                    padding: 20px; margin: 0; line-height: 1.5;
+                }}
+                .card {{
+                    background: rgba(10, 15, 25, 0.95); border: 1px solid {accent_color}88;
+                    box-shadow: 0 0 25px {accent_color}33; border-radius: 6px; padding: 24px; max-width: 720px; margin: 20px auto;
+                }}
+                .badge {{
+                    background: rgba(0, 255, 102, 0.15); border: 1px solid #00ff66;
+                    color: #00ff66; padding: 3px 8px; border-radius: 3px; font-size: 11px; font-weight: bold;
+                }}
+                .carrier-badge {{
+                    background: rgba(255, 153, 0, 0.15); border: 1px solid #ff9900;
+                    color: #ff9900; padding: 3px 8px; border-radius: 3px; font-size: 11px; font-weight: bold;
+                }}
+                .detail-row {{
+                    display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 13px;
+                }}
+                .btn {{
+                    background: {accent_color}22; border: 1px solid {accent_color}; color: {accent_color};
+                    padding: 10px 18px; border-radius: 4px; font-family: monospace; font-size: 12px;
+                    cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; font-weight: bold;
+                    margin-top: 15px; transition: all 0.2s;
+                }}
+                .btn:hover {{ background: {accent_color}44; }}
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px;">
+                    <div>
+                        <div style="color:{accent_color}; font-size: 11px; text-transform: uppercase;">MINI-NAVIGATEUR EMBARQUÉ HACK509</div>
+                        <h2 style="margin: 4px 0; color: #fff;">{site_name} // Routage US</h2>
+                    </div>
+                    <span class="badge">🌐 PASSERELLE US ACTIVE</span>
+                </div>
+
+                <p style="font-size: 12px; color: #94a3b8; margin-bottom: 20px;">
+                    Connexion établie via l'infrastructure américaine pour le numéro <strong style="color:#00ff66;">{clean_num}</strong> :
+                </p>
+
+                <div class="detail-row">
+                    <span style="color:#94a3b8;">Numéro de téléphone :</span>
+                    <strong style="color:#00ff66;">{clean_num}</strong>
+                </div>
+                <div class="detail-row">
+                    <span style="color:#94a3b8;">Opérateur certifié (Carrier) :</span>
+                    <span class="carrier-badge">{area_info['carrier']}</span>
+                </div>
+                <div class="detail-row">
+                    <span style="color:#94a3b8;">Localisation / État :</span>
+                    <strong style="color:#fff;">{area_info['location']} ({area_info['state']})</strong>
+                </div>
+                <div class="detail-row">
+                    <span style="color:#94a3b8;">Indicatif régional :</span>
+                    <strong style="color:#fff;">Area Code {area_info['area_code']}</strong>
+                </div>
+                <div class="detail-row">
+                    <span style="color:#94a3b8;">Fiche consultée :</span>
+                    <span style="color:#38bdf8;">{site_name} US Records</span>
+                </div>
+
+                <div style="margin-top: 20px;">
+                    <a href="{url}" class="btn" style="width: 100%; justify-content: center; box-sizing: border-box;">
+                        ⚡ Recharger la requête sur {site_name}
+                    </a>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        http_resp = HttpResponse(fallback_html, content_type='text/html; charset=utf-8')
+        http_resp['X-Frame-Options'] = 'ALLOWALL'
+        http_resp['Content-Security-Policy'] = "frame-ancestors *"
+        return http_resp
+
+

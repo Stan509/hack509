@@ -55,12 +55,69 @@ class ContactImportSerializer(serializers.Serializer):
     )
 
     def validate_contacts(self, contacts):
-        required_fields = {'first_name', 'last_name', 'phone'}
-        errors = []
+        validated_list = []
         for i, contact in enumerate(contacts):
-            missing = required_fields - set(contact.keys())
-            if missing:
-                errors.append(f'Row {i + 1}: missing fields {missing}')
-        if errors:
-            raise serializers.ValidationError(errors)
-        return contacts
+            phone = str(contact.get('phone') or contact.get('phone_number') or contact.get('mobile') or contact.get('tel') or '').strip()
+            # If phone is not in a dedicated key, scan all keys in contact for digits
+            if not phone:
+                for k, v in contact.items():
+                    val = str(v).strip()
+                    digits = ''.join(c for c in val if c.isdigit())
+                    if len(digits) in (10, 11) and not any(w in k.lower() for w in ['id', 'date', 'code', 'zip', 'age', 'num_']):
+                        phone = val
+                        break
+
+            if not phone:
+                continue
+
+            # Normalize phone with + prefix
+            digits = ''.join(c for c in phone if c.isdigit())
+            if len(digits) == 10:
+                normalized_phone = '+1' + digits
+            elif len(digits) == 11 and digits.startswith('1'):
+                normalized_phone = '+' + digits
+            elif phone.startswith('+'):
+                normalized_phone = '+' + digits
+            else:
+                normalized_phone = '+' + digits if digits else phone
+
+            # Detect names
+            fname = str(contact.get('first_name') or contact.get('firstname') or contact.get('prenom') or '').strip()
+            lname = str(contact.get('last_name') or contact.get('lastname') or contact.get('nom') or '').strip()
+            full_name = str(contact.get('name') or contact.get('full_name') or contact.get('client') or '').strip()
+
+            if not fname and not lname and full_name:
+                parts = full_name.split()
+                fname = parts[0]
+                lname = ' '.join(parts[1:]) if len(parts) > 1 else 'CSV'
+
+            if not fname:
+                fname = 'Prospect'
+            if not lname:
+                lname = 'CSV'
+
+            address = str(contact.get('address') or contact.get('addr') or contact.get('street') or contact.get('adresse') or '').strip()
+            city = str(contact.get('city') or contact.get('ville') or '').strip()
+            state = str(contact.get('state') or contact.get('etat') or contact.get('region') or '').strip()
+            if city or state:
+                loc_part = f"{city}, {state}".strip(' ,')
+                address = f"{address} ({loc_part})".strip() if address else loc_part
+
+            notes = str(contact.get('notes') or contact.get('note') or contact.get('remarque') or contact.get('company') or '').strip()
+            source = str(contact.get('source') or 'csv_import').strip()
+            status_val = str(contact.get('status') or 'new').strip()
+
+            validated_list.append({
+                'first_name': fname,
+                'last_name': lname,
+                'phone': normalized_phone,
+                'address': address,
+                'notes': notes,
+                'source': source,
+                'status': status_val,
+            })
+
+        if not validated_list:
+            raise serializers.ValidationError("Aucun contact valide avec un numéro de téléphone n'a été trouvé dans le fichier CSV.")
+
+        return validated_list

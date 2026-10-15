@@ -16,43 +16,172 @@ const STATUS_COLORS = {
   callback:     { label: 'CALLBACK',    color: '#00d4ff' },
 }
 
-function ImportPipeline({ onImport }) {
-  const [csv, setCsv] = useState('')
+function ImportPipeline({ onImport, onSaveAndQueue }) {
+  const [csvText, setCsvText] = useState('')
+  const [fileName, setFileName] = useState('')
   const [preview, setPreview] = useState([])
   const [parsed, setParsed] = useState(false)
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState('')
-  const [importSuccess, setImportSuccess] = useState(false)
+  const [importSuccess, setImportSuccess] = useState('')
+  const [useTextInput, setUseTextInput] = useState(false)
+  const fileInputRef = useRef(null)
 
-  const parseCSV = () => {
+  // Smart CSV line tokenizer handling quotes
+  const tokenizeCSVLine = (line, delimiter) => {
+    const values = []
+    let current = ''
+    let inQuotes = false
+
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i]
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          current += '"'
+          i++
+        } else {
+          inQuotes = !inQuotes
+        }
+      } else if (char === delimiter && !inQuotes) {
+        values.push(current.trim())
+        current = ''
+      } else {
+        current += char
+      }
+    }
+    values.push(current.trim())
+    return values.map(v => v.replace(/^["']|["']$/g, '').trim())
+  }
+
+  // Detect dominant delimiter (, ; \t |)
+  const detectDelimiter = (sampleLine) => {
+    const delimiters = [',', ';', '\t', '|']
+    let bestDelim = ','
+    let maxCount = 0
+    delimiters.forEach(d => {
+      const count = sampleLine.split(d).length - 1
+      if (count > maxCount) {
+        maxCount = count
+        bestDelim = d
+      }
+    })
+    return bestDelim
+  }
+
+  const parseRawCSV = (content) => {
     setImportError('')
-    const lines = csv.trim().split('\n').filter(Boolean)
-    if (lines.length === 0) { setImportError('No data to parse'); return }
+    setImportSuccess('')
+    if (!content || !content.trim()) {
+      setImportError('Veuillez sélectionner ou coller un fichier CSV.')
+      return
+    }
 
-    const header = lines[0].toLowerCase().split(',').map((h) => h.trim())
+    const lines = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(l => l.trim().length > 0)
+    if (lines.length === 0) {
+      setImportError('Le fichier est vide.')
+      return
+    }
+
+    const delimiter = detectDelimiter(lines[0])
+    const rawHeader = tokenizeCSVLine(lines[0], delimiter)
+    const lowerHeader = rawHeader.map(h => h.toLowerCase())
+
+    // Check if first line is a header or already data
+    const firstLineHasPhone = rawHeader.some(val => {
+      const digits = val.replace(/\D/g, '')
+      return digits.length >= 7 && digits.length <= 15
+    })
+    const isHeaderPresent = !firstLineHasPhone && rawHeader.some(h => /name|nom|prenom|phone|tel|mobile|cell|num|addr|mail|contact/i.test(h))
+
+    const startIndex = isHeaderPresent ? 1 : 0
+    const headerCols = isHeaderPresent ? lowerHeader : rawHeader.map((_, i) => `col_${i}`)
+
+    // Find known column indices
+    let phoneColIdx = headerCols.findIndex(h => /phone|tel|mobile|cell|num|contact|appel/i.test(h))
+    const fnameColIdx = headerCols.findIndex(h => /first_name|firstname|prenom|first|given/i.test(h))
+    const lnameColIdx = headerCols.findIndex(h => /last_name|lastname|nom|last|family|surname/i.test(h))
+    const fullNameColIdx = headerCols.findIndex(h => /^(name|full_name|fullname|nom_complet|contact_name|client|prospect)$/i.test(h))
+    const addrColIdx = headerCols.findIndex(h => /address|addr|street|rue|adresse|location/i.test(h))
+    const cityColIdx = headerCols.findIndex(h => /city|ville/i.test(h))
+    const stateColIdx = headerCols.findIndex(h => /state|etat|region/i.test(h))
+    const compColIdx = headerCols.findIndex(h => /company|societe|entreprise|carrier|carrier_name|operator/i.test(h))
+    const notesColIdx = headerCols.findIndex(h => /note|notes|remarque|comment|email|mail/i.test(h))
+
     const results = []
 
-    for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(',').map((v) => v.trim().replace(/^["']|["']$/g, ''))
-      const row = {}
-      header.forEach((h, idx) => { row[h] = values[idx] || '' })
+    for (let i = startIndex; i < lines.length; i++) {
+      const values = tokenizeCSVLine(lines[i], delimiter)
+      if (values.length === 0 || values.every(v => !v)) continue
 
-      // Normalize fields
-      const contact = {
-        id: `import_${Date.now()}_${i}`,
-        first_name: row.first_name || row.firstname || row.first || '',
-        last_name: row.last_name || row.lastname || row.last || '',
-        phone: row.phone || row.phone_number || row.mobile || row.cell || '',
-        address: row.address || row.addr || '',
-        source: 'csv_import',
-        status: 'new',
+      // If phone column wasn't identified by header, detect by value
+      let phoneVal = phoneColIdx >= 0 ? values[phoneColIdx] : ''
+      if (!phoneVal) {
+        for (let c = 0; c < values.length; c++) {
+          const digits = values[c].replace(/\D/g, '')
+          if (digits.length >= 7 && digits.length <= 15) {
+            phoneVal = values[c]
+            if (phoneColIdx < 0) phoneColIdx = c // Lock in column
+            break
+          }
+        }
       }
 
-      if (contact.phone) results.push(contact)
+      if (!phoneVal) continue
+
+      // Normalize phone E.164
+      const digits = phoneVal.replace(/\D/g, '')
+      let cleanPhone = ''
+      if (digits.length === 10) {
+        cleanPhone = '+1' + digits
+      } else if (digits.length === 11 && digits.startsWith('1')) {
+        cleanPhone = '+' + digits
+      } else if (phoneVal.startsWith('+')) {
+        cleanPhone = '+' + digits
+      } else {
+        cleanPhone = digits.length >= 7 ? '+' + digits : phoneVal
+      }
+
+      // Detect Names
+      let fname = fnameColIdx >= 0 ? values[fnameColIdx] : ''
+      let lname = lnameColIdx >= 0 ? values[lnameColIdx] : ''
+      const fullName = fullNameColIdx >= 0 ? values[fullNameColIdx] : ''
+
+      if (!fname && !lname && fullName) {
+        const parts = fullName.split(' ').filter(Boolean)
+        fname = parts[0] || 'Prospect'
+        lname = parts.slice(1).join(' ') || 'CSV'
+      }
+
+      if (!fname) fname = `Prospect ${i + 1}`
+      if (!lname) lname = 'CSV'
+
+      // Detect Address & City/State
+      let addr = addrColIdx >= 0 ? values[addrColIdx] : ''
+      const city = cityColIdx >= 0 ? values[cityColIdx] : ''
+      const state = stateColIdx >= 0 ? values[stateColIdx] : ''
+      if (city || state) {
+        const loc = [city, state].filter(Boolean).join(', ')
+        addr = addr ? `${addr} (${loc})` : loc
+      }
+
+      const company = compColIdx >= 0 ? values[compColIdx] : ''
+      const notes = notesColIdx >= 0 ? values[notesColIdx] : ''
+
+      results.push({
+        id: `import_${Date.now()}_${i}`,
+        first_name: fname,
+        last_name: lname,
+        phone: cleanPhone,
+        address: addr || 'Non spécifiée',
+        company: company,
+        notes: notes || (company ? `Société: ${company}` : 'Import CSV'),
+        source: fileName ? `csv:${fileName}` : 'csv_import',
+        status: 'new',
+      })
     }
 
     if (results.length === 0) {
-      setImportError('No valid contacts found. Ensure "phone" column exists.')
+      setImportError('Aucun contact valide avec un numéro de téléphone n’a été identifié. Vérifiez que votre fichier contient une colonne avec des numéros de téléphone.')
       return
     }
 
@@ -60,102 +189,212 @@ function ImportPipeline({ onImport }) {
     setParsed(true)
   }
 
-  const handleImport = async () => {
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setFileName(file.name)
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const content = event.target?.result || ''
+      setCsvText(content)
+      parseRawCSV(content)
+    }
+    reader.onerror = () => {
+      setImportError('Erreur de lecture du fichier.')
+    }
+    reader.readAsText(file)
+  }
+
+  const handleImportSubmit = async (autoQueue = false) => {
     setImporting(true)
     setImportError('')
     try {
       await onImport(preview)
-      setImportSuccess(true)
-      setCsv('')
-      setPreview([])
-      setParsed(false)
-      setTimeout(() => setImportSuccess(false), 3000)
+      if (autoQueue && onSaveAndQueue) {
+        onSaveAndQueue(preview)
+      }
+      setImportSuccess(`✓ Succès : ${preview.length} contact(s) importé(s) dans la base !`)
+      setTimeout(() => {
+        setImportSuccess('')
+        setParsed(false)
+        setPreview([])
+        setCsvText('')
+        setFileName('')
+      }, 3500)
     } catch (err) {
-      setImportError(err.message || 'Import failed')
+      setImportError(err.response?.data?.message || err.message || 'Échec de l’importation.')
     } finally {
       setImporting(false)
     }
   }
 
   return (
-    <div className="card-cyber rounded p-5">
-      <div className="terminal-header mb-1">Data Ingestion</div>
-      <h3 className="text-text-terminal text-sm font-mono font-bold mb-4">DATA EXTRACTION PIPELINE</h3>
-
-      <div className="text-text-muted text-xs font-mono mb-2" style={{ fontSize: '0.65rem' }}>
-        FORMAT: first_name,last_name,phone,address (CSV — first row is header)
+    <div className="card-cyber rounded p-4 sm:p-5 border border-neon-green/30 bg-black/80 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="terminal-header text-[0.65rem] text-neon-green">INGESTION DE DONNÉES & FICHIERS</div>
+          <h3 className="text-white text-sm font-mono font-bold">IMPORTATEUR DE CONTACTS CSV</h3>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setUseTextInput(!useTextInput)}
+            className="text-[0.7rem] font-mono px-2.5 py-1 rounded border border-white/20 text-text-muted hover:text-white"
+          >
+            {useTextInput ? '📁 Utiliser le sélecteur de fichier' : '✍️ Coller du texte brut'}
+          </button>
+        </div>
       </div>
 
       {!parsed ? (
-        <>
-          <textarea
-            value={csv}
-            onChange={(e) => setCsv(e.target.value)}
-            className="input-cyber w-full px-3 py-3 text-xs rounded-sm resize-none scrollbar-cyber"
-            rows={8}
-            placeholder={'first_name,last_name,phone,address\nJohn,Doe,+15550001234,123 Main St\nJane,Smith,+15550005678,456 Oak Ave'}
-          />
-          {importError && (
-            <div className="text-neon-danger text-xs font-mono mt-2">{importError}</div>
-          )}
-          <button
-            onClick={parseCSV}
-            disabled={!csv.trim()}
-            className="btn-cyber mt-3 px-6 py-2 text-xs rounded-sm font-bold"
-            style={{ opacity: !csv.trim() ? 0.4 : 1 }}
-          >
-            ⬡ PARSE DATA
-          </button>
-        </>
-      ) : (
-        <AnimatePresence mode="wait">
-          <motion.div key="preview" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-            <div className="text-neon-green text-xs font-mono mb-3">
-              ✓ PARSED {preview.length} CONTACTS — REVIEW BEFORE IMPORT
+        <div className="space-y-3">
+          {!useTextInput ? (
+            /* File Upload Drag & Drop Zone */
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault()
+                const file = e.dataTransfer.files?.[0]
+                if (file) {
+                  setFileName(file.name)
+                  const reader = new FileReader()
+                  reader.onload = (evt) => {
+                    const content = evt.target?.result || ''
+                    setCsvText(content)
+                    parseRawCSV(content)
+                  }
+                  reader.readAsText(file)
+                }
+              }}
+              className="border-2 border-dashed border-neon-green/40 hover:border-neon-green bg-black/40 hover:bg-neon-green/5 p-6 rounded-lg text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-2"
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,text/csv,text/plain"
+                onChange={handleFileChange}
+                className="hidden"
+              />
+              <div className="text-3xl text-neon-green">📁</div>
+              <div className="text-xs font-mono font-bold text-white">
+                Cliquez pour choisir un fichier CSV ou Glissez-déposez ici
+              </div>
+              <div className="text-[0.7rem] font-mono text-text-muted">
+                Détection automatique des séparateurs (, ; \t) et colonnes téléphone, nom, adresse
+              </div>
+              {fileName && (
+                <div className="mt-2 px-3 py-1 rounded bg-neon-green/20 border border-neon-green text-neon-green text-xs font-mono font-bold">
+                  Fichier sélectionné : {fileName}
+                </div>
+              )}
             </div>
-            <div className="max-h-48 overflow-y-auto scrollbar-cyber border border-neon-green border-opacity-10 rounded-sm">
-              <table className="table-cyber w-full">
+          ) : (
+            /* Textarea Input */
+            <div>
+              <textarea
+                value={csvText}
+                onChange={(e) => setCsvText(e.target.value)}
+                className="input-cyber w-full px-3 py-3 text-xs rounded resize-none scrollbar-cyber bg-black/60 border border-white/20 text-white font-mono"
+                rows={6}
+                placeholder={"Prénom,Nom,Téléphone,Adresse,Société\nJohn,Doe,+13055551234,1245 NW 36th St Miami FL,TechCorp\nMarie,Curie,+12125559876,500 Broadway New York,ScienceInc"}
+              />
+              <button
+                type="button"
+                onClick={() => parseRawCSV(csvText)}
+                disabled={!csvText.trim()}
+                className="btn-cyber mt-2 px-5 py-2 text-xs rounded font-bold cursor-pointer"
+                style={{ opacity: !csvText.trim() ? 0.4 : 1 }}
+              >
+                ⬡ ANALYSER ET CLASSER LES CONTACTS
+              </button>
+            </div>
+          )}
+
+          {importError && (
+            <div className="text-neon-danger text-xs font-mono bg-red-500/10 border border-red-500/30 p-2.5 rounded">
+              ⚠️ {importError}
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Preview Table Before Import */
+        <AnimatePresence mode="wait">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="text-neon-green text-xs font-mono font-bold flex items-center gap-1.5">
+                <span>✓</span>
+                <span>{preview.length} CONTACTS RECONNUS ET CLASSIFIÉS AVEC SUCCÈS</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setParsed(false); setPreview([]); setFileName('') }}
+                className="text-[0.7rem] font-mono text-text-muted hover:text-white px-2 py-0.5 rounded border border-white/20"
+              >
+                Changer de fichier
+              </button>
+            </div>
+
+            <div className="max-h-60 overflow-y-auto scrollbar-cyber border border-neon-green/30 rounded bg-black/60">
+              <table className="table-cyber w-full text-left text-xs font-mono">
                 <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>NAME</th>
-                    <th>PHONE</th>
-                    <th>ADDRESS</th>
+                  <tr className="bg-black/90 border-b border-white/10 text-text-muted text-[0.7rem]">
+                    <th className="p-2">#</th>
+                    <th className="p-2">NOM COMPLET</th>
+                    <th className="p-2">TÉLÉPHONE</th>
+                    <th className="p-2">ADRESSE / VILLE</th>
+                    <th className="p-2">ENTREPRISE / INFOS</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {preview.map((c, i) => (
-                    <tr key={i}>
-                      <td className="text-text-muted">{i + 1}</td>
-                      <td>{c.first_name} {c.last_name}</td>
-                      <td className="text-neon-dim">{c.phone}</td>
-                      <td className="text-text-muted">{c.address || '--'}</td>
+                <tbody className="divide-y divide-white/5">
+                  {preview.slice(0, 100).map((c, i) => (
+                    <tr key={i} className="hover:bg-white/5">
+                      <td className="p-2 text-text-muted">{i + 1}</td>
+                      <td className="p-2 font-bold text-white">{c.first_name} {c.last_name}</td>
+                      <td className="p-2 font-bold text-neon-green tracking-wider">{c.phone}</td>
+                      <td className="p-2 text-text-muted truncate max-w-[200px]">{c.address || '--'}</td>
+                      <td className="p-2 text-text-muted truncate max-w-[150px]">{c.company || c.notes || '--'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              {preview.length > 100 && (
+                <div className="p-2 text-center text-xs font-mono text-text-muted bg-black/40">
+                  ... et {preview.length - 100} contacts supplémentaires prêts à l'importation.
+                </div>
+              )}
             </div>
 
-            {importError && <div className="text-neon-danger text-xs font-mono mt-2">{importError}</div>}
+            {importError && (
+              <div className="text-neon-danger text-xs font-mono bg-red-500/10 border border-red-500/30 p-2.5 rounded">
+                ⚠️ {importError}
+              </div>
+            )}
             {importSuccess && (
-              <div className="text-neon-green text-xs font-mono mt-2 flex items-center gap-2">
-                ✓ IMPORT COMPLETE — {preview.length} CONTACTS LOADED
+              <div className="text-neon-green text-xs font-mono bg-neon-green/10 border border-neon-green/30 p-2.5 rounded font-bold animate-pulse">
+                {importSuccess}
               </div>
             )}
 
-            <div className="flex gap-2 mt-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
               <button
-                onClick={handleImport}
+                type="button"
+                onClick={() => handleImportSubmit(false)}
                 disabled={importing}
-                className="btn-cyber flex-1 py-2 text-xs rounded-sm font-bold"
+                className="btn-cyber py-2.5 px-4 text-xs font-mono font-bold rounded flex items-center justify-center gap-2 cursor-pointer"
+                style={{ borderColor: '#00ff66', color: '#00ff66', background: 'rgba(0,255,102,0.15)' }}
               >
-                {importing ? '⟳ IMPORTING...' : `⬆ CONFIRM IMPORT (${preview.length})`}
+                <span>{importing ? '⟳ IMPORTATION EN COURS...' : `⬆ IMPORTER DANS LA BASE (${preview.length})`}</span>
               </button>
+
               <button
-                onClick={() => { setParsed(false); setPreview([]) }}
-                className="btn-cyber btn-danger px-4 py-2 text-xs rounded-sm"
+                type="button"
+                onClick={() => handleImportSubmit(true)}
+                disabled={importing}
+                className="btn-cyber py-2.5 px-4 text-xs font-mono font-bold rounded flex items-center justify-center gap-2 cursor-pointer"
+                style={{ borderColor: '#00d4ff', color: '#00d4ff', background: 'rgba(0,212,255,0.15)' }}
               >
-                ✕
+                <span>⚡ IMPORTER & METTRE EN FILE DIALER</span>
               </button>
             </div>
           </motion.div>
@@ -708,7 +947,7 @@ export default function Contacts() {
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
           >
-            <ImportPipeline onImport={handleImport} />
+            <ImportPipeline onImport={handleImport} onSaveAndQueue={(list) => addBulkToQueue(list)} />
           </motion.div>
         )}
       </AnimatePresence>

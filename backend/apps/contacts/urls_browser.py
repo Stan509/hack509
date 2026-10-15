@@ -12,6 +12,7 @@ from .views_browser import (
     BrowserProxyTestView,
     BrowserChromiumIpView,
     BrowserAuthCheckView,
+    BrowserProxyRenderView,
 )
 
 urlpatterns = [
@@ -23,5 +24,6 @@ urlpatterns = [
     path('proxy/test/', BrowserProxyTestView.as_view(), name='browser-proxy-test'),
     path('proxy/chromium-ip/', BrowserChromiumIpView.as_view(), name='browser-chromium-ip'),
     path('auth-check/', BrowserAuthCheckView.as_view(), name='browser-auth-check'),
+    path('render/', BrowserProxyRenderView.as_view(), name='browser-proxy-render'),
 ]
 
