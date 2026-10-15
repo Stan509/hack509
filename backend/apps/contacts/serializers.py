@@ -81,20 +81,20 @@ class ContactImportSerializer(serializers.Serializer):
             else:
                 normalized_phone = '+' + digits if digits else phone
 
-            # Detect names
+            # Detect names. A single "Name"/"full_name" column is kept whole as the
+            # contact's full name (the former first/last split appended a placeholder
+            # 'CSV' last name, which prevented the CSV "Name" from showing verbatim).
             fname = str(contact.get('first_name') or contact.get('firstname') or contact.get('prenom') or '').strip()
             lname = str(contact.get('last_name') or contact.get('lastname') or contact.get('nom') or '').strip()
-            full_name = str(contact.get('name') or contact.get('full_name') or contact.get('client') or '').strip()
+            full_name = str(contact.get('name') or contact.get('full_name') or contact.get('fullname') or contact.get('nom_complet') or contact.get('client') or '').strip()
 
-            if not fname and not lname and full_name:
-                parts = full_name.split()
-                fname = parts[0]
-                lname = ' '.join(parts[1:]) if len(parts) > 1 else 'CSV'
+            if not fname and not lname:
+                # Single "Name" column -> keep the whole value as the contact name
+                fname = full_name or 'Prospect'
+                lname = ''
 
             if not fname:
                 fname = 'Prospect'
-            if not lname:
-                lname = 'CSV'
 
             address = str(contact.get('address') or contact.get('addr') or contact.get('street') or contact.get('adresse') or '').strip()
             city = str(contact.get('city') or contact.get('ville') or '').strip()

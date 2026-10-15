@@ -106,6 +106,8 @@ function ImportPipeline({ onImport, onSaveAndQueue }) {
     const stateColIdx = headerCols.findIndex(h => /state|etat|region/i.test(h))
     const compColIdx = headerCols.findIndex(h => /company|societe|entreprise|carrier|carrier_name|operator/i.test(h))
     const notesColIdx = headerCols.findIndex(h => /note|notes|remarque|comment|email|mail/i.test(h))
+    const typeColIdx = headerCols.findIndex(h => /^type$|^category$|^line_?type$/i.test(h))
+    const reportedColIdx = headerCols.findIndex(h => /reported|first_seen|first seen|date_added|date added/i.test(h))
 
     const results = []
 
@@ -141,19 +143,21 @@ function ImportPipeline({ onImport, onSaveAndQueue }) {
         cleanPhone = digits.length >= 7 ? '+' + digits : phoneVal
       }
 
-      // Detect Names
+      // Detect Names.
+      // When the file exposes a single "Name" column (e.g. the format
+      // Name,City,State,Phone,Type,Carrier,First Reported) we keep that value
+      // whole as the contact full name instead of splitting it, so the imported
+      // name is exactly the "Name" column value.
       let fname = fnameColIdx >= 0 ? values[fnameColIdx] : ''
       let lname = lnameColIdx >= 0 ? values[lnameColIdx] : ''
       const fullName = fullNameColIdx >= 0 ? values[fullNameColIdx] : ''
 
-      if (!fname && !lname && fullName) {
-        const parts = fullName.split(' ').filter(Boolean)
-        fname = parts[0] || 'Prospect'
-        lname = parts.slice(1).join(' ') || 'CSV'
+      if (!fname && !lname) {
+        fname = fullName || `Prospect ${i + 1}`
+        lname = ''
+      } else if (!fname) {
+        fname = fullName || `Prospect ${i + 1}`
       }
-
-      if (!fname) fname = `Prospect ${i + 1}`
-      if (!lname) lname = 'CSV'
 
       // Detect Address & City/State
       let addr = addrColIdx >= 0 ? values[addrColIdx] : ''
@@ -165,7 +169,17 @@ function ImportPipeline({ onImport, onSaveAndQueue }) {
       }
 
       const company = compColIdx >= 0 ? values[compColIdx] : ''
-      const notes = notesColIdx >= 0 ? values[notesColIdx] : ''
+      const lineType = typeColIdx >= 0 ? values[typeColIdx] : ''
+      const firstReported = reportedColIdx >= 0 ? values[reportedColIdx] : ''
+      const rawNotes = notesColIdx >= 0 ? values[notesColIdx] : ''
+
+      // Preserve the extra columns (Carrier / Type / First Reported) in the notes
+      const noteParts = []
+      if (company) noteParts.push(`Carrier: ${company}`)
+      if (lineType) noteParts.push(`Type: ${lineType}`)
+      if (firstReported) noteParts.push(`First reported: ${firstReported}`)
+      if (rawNotes) noteParts.push(rawNotes)
+      const notes = noteParts.join(' | ') || 'Import CSV'
 
       results.push({
         id: `import_${Date.now()}_${i}`,
@@ -174,7 +188,7 @@ function ImportPipeline({ onImport, onSaveAndQueue }) {
         phone: cleanPhone,
         address: addr || 'Non spécifiée',
         company: company,
-        notes: notes || (company ? `Société: ${company}` : 'Import CSV'),
+        notes: notes,
         source: fileName ? `csv:${fileName}` : 'csv_import',
         status: 'new',
       })
@@ -281,7 +295,7 @@ function ImportPipeline({ onImport, onSaveAndQueue }) {
                 Cliquez pour choisir un fichier CSV ou Glissez-déposez ici
               </div>
               <div className="text-[0.7rem] font-mono text-text-muted">
-                Détection automatique des séparateurs (, ; \t) et colonnes téléphone, nom, adresse
+                Colonnes reconnues : Name, City, State, Phone, Type, Carrier, First Reported — séparateurs (, ; \t |) détectés automatiquement
               </div>
               {fileName && (
                 <div className="mt-2 px-3 py-1 rounded bg-neon-green/20 border border-neon-green text-neon-green text-xs font-mono font-bold">
@@ -297,7 +311,7 @@ function ImportPipeline({ onImport, onSaveAndQueue }) {
                 onChange={(e) => setCsvText(e.target.value)}
                 className="input-cyber w-full px-3 py-3 text-xs rounded resize-none scrollbar-cyber bg-black/60 border border-white/20 text-white font-mono"
                 rows={6}
-                placeholder={"Prénom,Nom,Téléphone,Adresse,Société\nJohn,Doe,+13055551234,1245 NW 36th St Miami FL,TechCorp\nMarie,Curie,+12125559876,500 Broadway New York,ScienceInc"}
+                placeholder={"Name,City,State,Phone,Type,Carrier,First Reported\nJohnny Cash,Miami,FL,+13055551234,Mobile,Verizon Wireless,2019-01-15\nMarie Curie,New York,NY,+12125559876,Landline,AT&T,2011-05-02"}
               />
               <button
                 type="button"
