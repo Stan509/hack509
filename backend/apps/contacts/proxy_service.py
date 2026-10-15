@@ -103,17 +103,66 @@ def test_ip_connection(proxy_settings: dict = None):
         'error': last_error or 'Impossible de vérifier la connexion réseau.'
     }
 
+def get_active_proxies(proxy_settings: dict = None):
+    """
+    Returns proxy dictionary for requests if proxy is enabled and host is present.
+    If proxy_settings is None, loads from BrowserProxyConfig.
+    """
+    cfg = proxy_settings
+    if cfg is None:
+        try:
+            saved = BrowserProxyConfig.objects.first()
+            if saved and saved.enabled and saved.host:
+                cfg = {
+                    'enabled': saved.enabled,
+                    'protocol': saved.protocol,
+                    'host': saved.host,
+                    'port': saved.port,
+                    'username': saved.username,
+                    'password': saved.password,
+                }
+        except Exception:
+            pass
+
+    if not cfg or not cfg.get('enabled') or not cfg.get('host'):
+        return None
+
+    proto = cfg.get('protocol', 'http').lower()
+    host = cfg.get('host', '').strip()
+    port = cfg.get('port', 7000)
+    user = cfg.get('username', '').strip()
+    pwd = cfg.get('password', '').strip()
+
+    if user and pwd:
+        proxy_url = f"{proto}://{user}:{pwd}@{host}:{port}"
+    elif user:
+        proxy_url = f"{proto}://{user}@{host}:{port}"
+    else:
+        proxy_url = f"{proto}://{host}:{port}"
+
+    return {
+        'http': proxy_url,
+        'https': proxy_url
+    }
+
 def restart_chromium_process():
-    """Trigger clean supervisor restart of Chromium in browser container."""
+    """Trigger clean supervisor restart of Chromium in browser container if in docker."""
+    if os.environ.get('VERCEL') or os.environ.get('AWS_LAMBDA_FUNCTION_NAME'):
+        return False
     import xmlrpc.client
-    import time
+    import socket
+    try:
+        with socket.create_connection(('browser', 9001), timeout=0.3):
+            pass
+    except Exception:
+        return False
+
     try:
         server = xmlrpc.client.ServerProxy('http://browser:9001/RPC2')
         try:
             server.supervisor.stopProcess('chromium')
         except Exception:
             pass
-        time.sleep(0.5)
         server.supervisor.startProcess('chromium')
         logger.info("Chromium restarted cleanly via supervisor XML-RPC.")
         return True
@@ -123,6 +172,8 @@ def restart_chromium_process():
 
 def sync_proxy_to_browser_container(config_obj: BrowserProxyConfig):
     """Write proxy environment for the Chromium container if active and restart browser."""
+    if os.environ.get('VERCEL') or os.environ.get('AWS_LAMBDA_FUNCTION_NAME'):
+        return
     try:
         os.makedirs('/data', exist_ok=True)
         if config_obj.enabled and config_obj.host:
@@ -144,7 +195,7 @@ def sync_proxy_to_browser_container(config_obj: BrowserProxyConfig):
 def get_chromium_active_ip():
     """
     Directly navigate Chromium via CDP to an IP check endpoint and read what IP
-    is seen from inside the browser itself.
+    is seen from inside the browser itself. Fallback to direct server IP on Vercel.
     """
     import json
     import time
@@ -152,7 +203,19 @@ def get_chromium_active_ip():
 
     nav_res = navigate_to_url("https://ipinfo.io/json")
     if not nav_res.get('success'):
-        return {'success': False, 'error': nav_res.get('error', 'Navigation échouée')}
+        # On Vercel / Cloud serverless, Chromium is not embedded; check server IP / Proxy
+        direct_info = test_ip_connection()
+        if direct_info.get('success'):
+            return {
+                'success': True,
+                'ip': direct_info.get('ip'),
+                'country': direct_info.get('country'),
+                'is_us': direct_info.get('is_us'),
+                'city': direct_info.get('city'),
+                'isp': direct_info.get('isp'),
+                'raw': f"Mode Vercel Cloud Serverless: IP Sortante Passerelle {direct_info.get('ip')}"
+            }
+        return {'success': False, 'error': nav_res.get('error', 'Navigateur Chromium local inaccessible.')}
 
     # Wait 2 seconds for response to render
     time.sleep(2)
@@ -178,5 +241,6 @@ def get_chromium_active_ip():
         }
     except Exception as e:
         return {'success': False, 'error': f"Format JSON inattendu depuis Chromium: {raw_text[:200]}"}
+
 
 

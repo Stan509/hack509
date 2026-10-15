@@ -169,13 +169,38 @@ class BrowserActionView(APIView):
 class BrowserCaptureView(APIView):
     """
     POST /api/browser/capture/
-    Capture strictly the visible page actively opened in Chromium.
-    Does NOT navigate or iterate multiple pages automatically.
+    Capture strictly the visible page actively opened in Chromium, OR
+    parse provided HTML/phone directly if running in cloud mode.
     """
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        html = request.data.get('html', '').strip()
+        url = request.data.get('url', '').strip()
+        if html:
+            from .tps_service import parse_active_page_dom
+            leads = parse_active_page_dom(html, url)
+            return Response({
+                'success': True,
+                'count': len(leads),
+                'results': leads,
+                'current_url': url or 'https://www.truepeoplesearch.com'
+            }, status=status.HTTP_200_OK)
+
         capture_data = capture_current_page()
+        if not capture_data.get('success'):
+            phone = request.data.get('phone', '').strip()
+            if phone:
+                from .tps_service import lookup_tps_fps
+                target = request.data.get('target', 'all')
+                leads = lookup_tps_fps(search_type='phone', phone=phone, provider=target)
+                return Response({
+                    'success': True,
+                    'count': len(leads),
+                    'results': leads,
+                    'current_url': url or f"https://www.truepeoplesearch.com/results?phoneno={''.join(c for c in phone if c.isdigit())}"
+                }, status=status.HTTP_200_OK)
+
         return Response(capture_data, status=status.HTTP_200_OK if capture_data.get('success') else status.HTTP_400_BAD_REQUEST)
 
 

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import RFB from '@novnc/novnc'
 import { api } from '../contexts/AuthContext.jsx'
+import { useDialer } from '../contexts/DialerContext.jsx'
 import CapturePreviewModal from './CapturePreviewModal.jsx'
 
 export default function EmbeddedBrowserModal({
@@ -12,18 +13,28 @@ export default function EmbeddedBrowserModal({
   contactName = '',
   onImportSuccess
 }) {
+  const { addToQueue } = useDialer()
   const [sessionTicket, setSessionTicket] = useState('')
   const [targetSite, setTargetSite] = useState(initialTarget) // 'tps' | 'fps'
   const [proxyActive, setProxyActive] = useState(false)
-  const [proxyProvider, setProxyProvider] = useState('Connexion directe')
+  const [proxyProvider, setProxyProvider] = useState('Passerelle US Vercel')
   const [copiedStatus, setCopiedStatus] = useState('')
-  const [errorMessage, setErrorMessage] = useState('')
-  const [connectionStatus, setConnectionStatus] = useState('Initialisation du navigateur…')
+  const [connectionStatus, setConnectionStatus] = useState('Prêt')
   const [rfbConnected, setRfbConnected] = useState(false)
-  const [navigating, setNavigating] = useState(false)
-  const [activeUrl, setActiveUrl] = useState('')
+  const [cloudMode, setCloudMode] = useState(true)
 
-  // Capture workflow state
+  // Lookup state
+  const [searchPhone, setSearchPhone] = useState(initialPhone)
+  const [searchName, setSearchName] = useState(contactName)
+  const [isSearching, setIsSearching] = useState(false)
+  const [searchResults, setSearchResults] = useState([])
+  const [searchError, setSearchError] = useState('')
+  const [addedQueueId, setAddedQueueId] = useState(null)
+  const [savedContactId, setSavedContactId] = useState(null)
+
+  // Manual HTML capture state
+  const [pasteHtml, setPasteHtml] = useState('')
+  const [showPasteBox, setShowPasteBox] = useState(false)
   const [capturing, setCapturing] = useState(false)
   const [capturedLeads, setCapturedLeads] = useState([])
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -32,19 +43,11 @@ export default function EmbeddedBrowserModal({
   const rfbRef = useRef(null)
   const connectingRef = useRef(false)
   const sessionTicketRef = useRef('')
-  const reconnectAttemptsRef = useRef(0)
-  const connectTimeoutRef = useRef(null)
   const isOpenRef = useRef(isOpen)
   isOpenRef.current = isOpen
-  const rfbConnectedRef = useRef(rfbConnected)
-  rfbConnectedRef.current = rfbConnected
 
   // Disconnect & cleanup RFB instance
   const cleanupRfb = useCallback(() => {
-    if (connectTimeoutRef.current) {
-      clearTimeout(connectTimeoutRef.current)
-      connectTimeoutRef.current = null
-    }
     if (rfbRef.current) {
       try {
         rfbRef.current.disconnect()
@@ -57,240 +60,20 @@ export default function EmbeddedBrowserModal({
     setRfbConnected(false)
   }, [])
 
-  // Heartbeat to keep session lock active only after connection is established
-  useEffect(() => {
-    if (!isOpen || !sessionTicket || !rfbConnected) return
-    const interval = setInterval(async () => {
-      try {
-        await api.post('/api/browser/session/heartbeat/', { ticket: sessionTicket })
-      } catch (err) {
-        console.warn('Heartbeat error:', err)
-      }
-    }, 20000)
-    return () => clearInterval(interval)
-  }, [isOpen, sessionTicket, rfbConnected])
-
-  // Establish direct RFB connection to Chromium via Websockify
-  const connectRfb = useCallback((ticket) => {
-    if (!canvasContainerRef.current) return
-    if (connectingRef.current || rfbRef.current) {
-      return
-    }
-
-    connectingRef.current = true
-    setConnectionStatus('Connexion à Chromium…')
-    setErrorMessage('')
-
-    if (canvasContainerRef.current) {
-      canvasContainerRef.current.innerHTML = ''
-    }
-
-    const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const socketUrl = `${scheme}://${window.location.host}/websockify?ticket=${encodeURIComponent(ticket)}`
-
-    try {
-      const rfb = new RFB(canvasContainerRef.current, socketUrl, {
-        wsProtocols: ['binary']
-      })
-
-      // Viewport configuration
-      rfb.scaleViewport = true
-      rfb.resizeSession = true
-      rfb.clipViewport = false
-      rfb.viewOnly = false
-      rfb.focusOnClick = true
-      rfb.showDotCursor = true
-
-      rfbRef.current = rfb
-
-      // Timeout if connection takes longer than 15s
-      connectTimeoutRef.current = setTimeout(() => {
-        if (!rfbConnectedRef.current && rfbRef.current === rfb) {
-          setConnectionStatus('Service websockify indisponible')
-          setErrorMessage('Délai de connexion dépassé. Le service distant met trop de temps à répondre.')
-          cleanupRfb()
-        }
-      }, 15000)
-
-      rfb.addEventListener('connect', () => {
-        if (connectTimeoutRef.current) {
-          clearTimeout(connectTimeoutRef.current)
-          connectTimeoutRef.current = null
-        }
-        connectingRef.current = false
-        reconnectAttemptsRef.current = 0
-        setRfbConnected(true)
-        setConnectionStatus('Navigateur connecté')
-        setErrorMessage('')
-
-        // Auto sync clipboard with target phone number
-        if (initialPhone) {
-          try {
-            rfb.clipboardPasteFrom(initialPhone)
-          } catch (e) {
-            console.debug('Clipboard sync notice:', e)
-          }
-        }
-      })
-
-      rfb.addEventListener('disconnect', (event) => {
-        if (connectTimeoutRef.current) {
-          clearTimeout(connectTimeoutRef.current)
-          connectTimeoutRef.current = null
-        }
-        connectingRef.current = false
-        setRfbConnected(false)
-        rfbRef.current = null
-
-        console.error('RFB disconnected', {
-          clean: event?.detail?.clean
-        })
-
-        if (event?.detail?.clean) {
-          setConnectionStatus('Session fermée')
-        } else {
-          // Reconnect logic with max 3 attempts
-          if (reconnectAttemptsRef.current < 3 && isOpenRef.current) {
-            reconnectAttemptsRef.current += 1
-            setConnectionStatus(`Reconnexion… (${reconnectAttemptsRef.current}/3)`)
-            setTimeout(() => {
-              if (isOpenRef.current && sessionTicketRef.current) {
-                connectRfb(sessionTicketRef.current)
-              }
-            }, 2000)
-          } else {
-            setConnectionStatus('Connexion RFB interrompue')
-            setErrorMessage('La connexion WebSocket au navigateur distant a été interrompue.')
-          }
-        }
-      })
-
-      rfb.addEventListener('securityfailure', () => {
-        if (connectTimeoutRef.current) {
-          clearTimeout(connectTimeoutRef.current)
-          connectTimeoutRef.current = null
-        }
-        connectingRef.current = false
-        setRfbConnected(false)
-        rfbRef.current = null
-        console.error('RFB security failure')
-        setConnectionStatus('Authentification Hack509 refusée')
-        setErrorMessage('Authentification Hack509 refusée ou ticket navigateur expiré.')
-      })
-
-      rfb.addEventListener('credentialsrequired', () => {
-        connectingRef.current = false
-        setRfbConnected(false)
-        setConnectionStatus('Identifiants VNC requis')
-        setErrorMessage('Identifiants VNC requis par le serveur distant.')
-      })
-
-    } catch (err) {
-      connectingRef.current = false
-      rfbRef.current = null
-      console.error('RFB init error:', err)
-      setConnectionStatus('Service websockify indisponible')
-      setErrorMessage(err.message || 'Impossible d’initialiser le client RFB.')
-    }
-  }, [cleanupRfb, initialPhone])
-
-  // Initialize browser session on backend and launch RFB
-  const initBrowserSession = useCallback(async (target, forceNew = false) => {
-    setConnectionStatus('Initialisation du navigateur…')
-    setErrorMessage('')
-    setRfbConnected(false)
-    reconnectAttemptsRef.current = 0
-
-    // Clean up any stale RFB instance before starting
-    cleanupRfb()
-
-    try {
-      const resp = await api.post('/api/browser/session/', {
-        target,
-        force_new_ticket: forceNew
-      })
-      if (resp.data && resp.data.success) {
-        const ticket = resp.data.ticket || ''
-        sessionTicketRef.current = ticket
-        setSessionTicket(ticket)
-        setProxyActive(Boolean(resp.data.proxy_active))
-        setProxyProvider(resp.data.proxy_provider || 'Connexion directe')
-        setActiveUrl(resp.data.target_url || '')
-
-        // Connect RFB
-        connectRfb(ticket)
-      } else {
-        setConnectionStatus('Navigateur indisponible')
-        setErrorMessage(resp.data?.error || 'Serveur du navigateur indisponible.')
-      }
-    } catch (err) {
-      console.warn('Browser session init error:', err)
-      if (err.response?.status === 423 || err.response?.data?.locked) {
-        setConnectionStatus('Connexion refusée')
-        setErrorMessage(err.response?.data?.error || 'Le navigateur est actuellement utilisé par un autre opérateur.')
-      } else {
-        setConnectionStatus('Navigateur indisponible')
-        setErrorMessage(err.response?.data?.error || 'Serveur du navigateur indisponible.')
-      }
-    }
-  }, [cleanupRfb, connectRfb])
-
-  useEffect(() => {
-    if (isOpen) {
-      setTargetSite(initialTarget)
-      setErrorMessage('')
-      initBrowserSession(initialTarget, false)
-      if (initialPhone) {
-        copyNumberToClipboard(initialPhone, initialTarget)
-      }
-    } else {
-      cleanupRfb()
-      sessionTicketRef.current = ''
-      setSessionTicket('')
-      setPreviewOpen(false)
-      setRfbConnected(false)
-    }
-    return () => {
-      cleanupRfb()
-    }
-  }, [isOpen])
-
-  const handleClose = async () => {
-    cleanupRfb()
-    try {
-      await api.delete('/api/browser/session/')
-    } catch (err) {
-      console.warn('Close session error:', err)
-    }
-    sessionTicketRef.current = ''
-    setSessionTicket('')
-    setPreviewOpen(false)
-    setRfbConnected(false)
-    onClose()
-  }
-
   const copyNumberToClipboard = async (phoneNum, target) => {
     if (!phoneNum) return
     const siteLabel = target === 'fps' ? 'FPS' : 'TPS'
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(phoneNum)
-        setCopiedStatus(`Numéro copié — collez-le dans la recherche ${siteLabel}`)
+        setCopiedStatus(`Numéro copié ! Collez-le dans la recherche ${siteLabel}`)
       } else {
         fallbackCopy(phoneNum, siteLabel)
-      }
-      // Also send to remote RFB clipboard
-      if (rfbRef.current) {
-        try {
-          rfbRef.current.clipboardPasteFrom(phoneNum)
-        } catch (e) {
-          console.debug('Remote clipboard paste:', e)
-        }
       }
     } catch {
       fallbackCopy(phoneNum, siteLabel)
     }
-    setTimeout(() => setCopiedStatus(''), 6000)
+    setTimeout(() => setCopiedStatus(''), 5000)
   }
 
   const fallbackCopy = (text, siteLabel) => {
@@ -304,51 +87,195 @@ export default function EmbeddedBrowserModal({
       textArea.select()
       document.execCommand('copy')
       document.body.removeChild(textArea)
-      setCopiedStatus(`Numéro copié — collez-le dans la recherche ${siteLabel}`)
+      setCopiedStatus(`Numéro copié ! Collez-le dans la recherche ${siteLabel}`)
     } catch {
-      setCopiedStatus('Presse-papiers indisponible — utilisez le bouton Copier ci-dessus')
+      setCopiedStatus('Presse-papiers indisponible — copiez manuellement')
     }
   }
 
-  const handleBrowserAction = async (action) => {
-    setNavigating(true)
+  // Perform active search through US server/proxy gateway
+  const performLookup = useCallback(async (phoneToSearch, nameToSearch, site) => {
+    setIsSearching(true)
+    setSearchError('')
+    setSearchResults([])
     try {
-      await api.post('/api/browser/action/', { action })
-    } catch (err) {
-      console.error('Browser action error:', err)
-    } finally {
-      setNavigating(false)
-    }
-  }
-
-  const handleSwitchSite = async (newSite) => {
-    setTargetSite(newSite)
-    try {
-      await api.post('/api/browser/session/', { target: newSite })
-      if (initialPhone) {
-        copyNumberToClipboard(initialPhone, newSite)
-      }
-    } catch (err) {
-      console.error('Switch site error:', err)
-    }
-  }
-
-  const handleCapturePage = async () => {
-    setCapturing(true)
-    setErrorMessage('')
-    try {
-      const resp = await api.post('/api/browser/capture/')
-      if (resp.data && resp.data.success) {
-        const leads = resp.data.results || []
-        setCapturedLeads(leads)
-        setActiveUrl(resp.data.current_url || '')
-        setPreviewOpen(true)
+      const resp = await api.post('/api/contacts/tps-lookup/', {
+        phone: phoneToSearch || '',
+        name: nameToSearch || '',
+        provider: site || 'all',
+        search_type: phoneToSearch ? 'phone' : 'name'
+      })
+      if (resp.data && resp.data.results && resp.data.results.length > 0) {
+        setSearchResults(resp.data.results)
+      } else if (resp.data && resp.data.message) {
+        setSearchError(resp.data.message)
       } else {
-        alert(resp.data?.error || 'Aucune donnée reconnue sur cette page.')
+        setSearchError('Aucun dossier trouvé pour ces critères.')
       }
     } catch (err) {
-      console.error('Capture error:', err)
-      alert('Erreur lors de la capture : ' + (err.response?.data?.error || err.message))
+      console.warn('Lookup error:', err)
+      setSearchError(err.response?.data?.error || 'Erreur lors de la communication avec la passerelle US.')
+    } finally {
+      setIsSearching(false)
+    }
+  }, [])
+
+  // Attempt RFB connection if available
+  const tryConnectRfb = useCallback((ticket) => {
+    if (!canvasContainerRef.current) return
+    if (connectingRef.current || rfbRef.current) return
+
+    connectingRef.current = true
+    const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
+    const socketUrl = `${scheme}://${window.location.host}/websockify?ticket=${encodeURIComponent(ticket)}`
+
+    try {
+      const rfb = new RFB(canvasContainerRef.current, socketUrl, {
+        wsProtocols: ['binary']
+      })
+      rfb.scaleViewport = true
+      rfb.resizeSession = true
+      rfbRef.current = rfb
+
+      rfb.addEventListener('connect', () => {
+        connectingRef.current = false
+        setRfbConnected(true)
+        setCloudMode(false)
+        setConnectionStatus('Navigateur noVNC connecté')
+      })
+
+      rfb.addEventListener('disconnect', () => {
+        connectingRef.current = false
+        setRfbConnected(false)
+        setCloudMode(true) // Fallback automatically to Cloud Mode
+        setConnectionStatus('Passerelle US Vercel active')
+      })
+    } catch {
+      connectingRef.current = false
+      setRfbConnected(false)
+      setCloudMode(true)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (isOpen) {
+      setTargetSite(initialTarget)
+      setSearchPhone(initialPhone)
+      setSearchName(contactName)
+      setSearchResults([])
+      setSearchError('')
+      setCloudMode(true) // Default to cloud mode on Vercel
+
+      if (initialPhone) {
+        copyNumberToClipboard(initialPhone, initialTarget)
+        performLookup(initialPhone, contactName, initialTarget)
+      }
+
+      // Initialize session on backend
+      api.post('/api/browser/session/', { target: initialTarget })
+        .then((resp) => {
+          if (resp.data && resp.data.ticket) {
+            sessionTicketRef.current = resp.data.ticket
+            setSessionTicket(resp.data.ticket)
+            setProxyActive(Boolean(resp.data.proxy_active))
+            setProxyProvider(resp.data.proxy_provider || 'Passerelle US Vercel')
+            // Try RFB in background
+            tryConnectRfb(resp.data.ticket)
+          }
+        })
+        .catch(() => {
+          setCloudMode(true)
+        })
+    } else {
+      cleanupRfb()
+      sessionTicketRef.current = ''
+      setSessionTicket('')
+      setSearchResults([])
+      setPreviewOpen(false)
+    }
+    return () => cleanupRfb()
+  }, [isOpen, initialTarget, initialPhone, contactName, performLookup, tryConnectRfb, cleanupRfb])
+
+  const handleClose = async () => {
+    cleanupRfb()
+    try {
+      await api.delete('/api/browser/session/')
+    } catch {
+      // Ignored
+    }
+    sessionTicketRef.current = ''
+    setSessionTicket('')
+    setSearchResults([])
+    onClose()
+  }
+
+  const handleSwitchSite = (site) => {
+    setTargetSite(site)
+    if (searchPhone || searchName) {
+      performLookup(searchPhone, searchName, site)
+    }
+  }
+
+  const handleAddLeadToQueue = (lead, idx) => {
+    const contactObj = {
+      id: `tps_${Date.now()}_${idx}`,
+      first_name: lead.first_name || '',
+      last_name: lead.last_name || 'Prospect TPS/FPS',
+      phone: lead.phone || lead.lookup_phone || '',
+      address: lead.address || '',
+      city: lead.city || '',
+      state: lead.state || '',
+      company: lead.carrier || lead.company || 'TPS/FPS',
+      status: 'pending',
+      notes: `Ajouté depuis ${lead.source || targetSite.toUpperCase()}. Âge: ${lead.age || 'N/A'}. Proches: ${lead.relatives || 'N/A'}.`
+    }
+    if (addToQueue) {
+      addToQueue(contactObj)
+      setAddedQueueId(idx)
+      setTimeout(() => setAddedQueueId(null), 3000)
+    }
+  }
+
+  const handleSaveContact = async (lead, idx) => {
+    try {
+      const payload = {
+        first_name: lead.first_name || 'Prospect',
+        last_name: lead.last_name || 'TPS/FPS',
+        phone: lead.phone || lead.lookup_phone || '',
+        address: lead.address || '',
+        city: lead.city || '',
+        state: lead.state || '',
+        company: lead.carrier || lead.company || '',
+        status: 'new',
+        notes: `Importé depuis ${lead.source || targetSite.toUpperCase()}. Âge: ${lead.age || 'N/A'}. Proches: ${lead.relatives || 'N/A'}.`
+      }
+      await api.post('/api/contacts/', payload)
+      setSavedContactId(idx)
+      if (onImportSuccess) onImportSuccess()
+      setTimeout(() => setSavedContactId(null), 3000)
+    } catch (err) {
+      alert('Erreur lors de la sauvegarde : ' + (err.response?.data?.error || err.message))
+    }
+  }
+
+  const handleParsePastedHtml = async () => {
+    if (!pasteHtml.trim()) return
+    setCapturing(true)
+    try {
+      const resp = await api.post('/api/browser/capture/', {
+        html: pasteHtml,
+        url: targetSite === 'fps' ? 'https://www.fastpeoplesearch.com' : 'https://www.truepeoplesearch.com'
+      })
+      if (resp.data && resp.data.results && resp.data.results.length > 0) {
+        setCapturedLeads(resp.data.results)
+        setPreviewOpen(true)
+        setShowPasteBox(false)
+        setPasteHtml('')
+      } else {
+        alert('Aucun dossier extrait du code HTML collé.')
+      }
+    } catch (err) {
+      alert('Erreur d’analyse : ' + (err.response?.data?.error || err.message))
     } finally {
       setCapturing(false)
     }
@@ -360,84 +287,88 @@ export default function EmbeddedBrowserModal({
   const siteTitle = isTPS ? 'TruePeopleSearch (TPS)' : 'FastPeopleSearch (FPS)'
   const siteAccent = isTPS ? '#00d4ff' : '#ff9900'
 
+  const rawDigits = (searchPhone || '').replace(/\D/g, '')
+  const cleanDigits = rawDigits.startsWith('1') && rawDigits.length === 11 ? rawDigits.slice(1) : rawDigits
+
+  const tpsDirectUrl = cleanDigits
+    ? `https://www.truepeoplesearch.com/results?phoneno=${cleanDigits}`
+    : `https://www.truepeoplesearch.com`
+  const fpsDirectUrl = cleanDigits
+    ? `https://www.fastpeoplesearch.com/phone/${cleanDigits}`
+    : `https://www.fastpeoplesearch.com`
+
   return (
     <>
       <AnimatePresence>
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-3"
-          style={{ background: 'rgba(0, 0, 0, 0.88)', backdropFilter: 'blur(6px)' }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4"
+          style={{ background: 'rgba(0, 0, 0, 0.88)', backdropFilter: 'blur(8px)' }}
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.96, y: 15 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 15 }}
-            className="card-cyber w-full max-w-6xl h-[90vh] flex flex-col rounded overflow-hidden shadow-2xl"
+            className="card-cyber w-full max-w-5xl h-[92vh] flex flex-col rounded overflow-hidden shadow-2xl bg-black/95 text-white"
             style={{
               border: `1px solid ${siteAccent}66`,
               boxShadow: `0 0 50px ${siteAccent}22`,
             }}
           >
-            {/* Top Bar: Controls, Status & Close */}
-            <div className="bg-black/95 px-4 py-2.5 border-b border-white/10 flex items-center justify-between gap-3 flex-shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={handleClose}
-                    className="w-3.5 h-3.5 rounded-full bg-red-500 hover:brightness-125 transition-all cursor-pointer"
-                    title="Fermer le navigateur"
-                  />
-                  <div className="w-3.5 h-3.5 rounded-full bg-yellow-500 opacity-60" />
-                  <div className="w-3.5 h-3.5 rounded-full bg-green-500 opacity-60" />
-                </div>
-                <div className="h-4 w-px bg-white/20" />
+            {/* Top Bar: Title & Status Badges */}
+            <div className="bg-black/95 px-4 py-2.5 border-b border-white/10 flex items-center justify-between gap-2 flex-shrink-0">
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  className="w-3.5 h-3.5 rounded-full bg-red-500 hover:brightness-125 transition-all cursor-pointer"
+                  title="Fermer"
+                />
+                <div className="w-3.5 h-3.5 rounded-full bg-yellow-500 opacity-60" />
+                <div className="w-3.5 h-3.5 rounded-full bg-green-500 opacity-60" />
+                <div className="h-4 w-px bg-white/20 mx-1" />
                 <div className="terminal-header flex items-center gap-2 text-xs font-bold">
-                  <span style={{ color: siteAccent }}>NAVIGATEUR EMBARQUÉ HACK509</span>
-                  <span className="text-text-muted">[{siteTitle}]</span>
+                  <span style={{ color: siteAccent }}>PASSERELLE RECHERCHE US</span>
+                  <span className="text-text-muted hidden sm:inline">[{siteTitle}]</span>
                 </div>
               </div>
 
-              {/* Status and Proxy indicators */}
+              {/* Status and Mode Indicators */}
               <div className="flex items-center gap-2">
-                {/* Connection Status Badge */}
                 <div
                   className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-sm border text-[0.65rem] font-mono"
                   style={{
-                    borderColor: rfbConnected ? '#00ff66' : '#ff9900',
-                    color: rfbConnected ? '#00ff66' : '#ff9900',
-                    background: rfbConnected ? 'rgba(0,255,102,0.1)' : 'rgba(255,153,0,0.1)',
+                    borderColor: '#00ff66',
+                    color: '#00ff66',
+                    background: 'rgba(0,255,102,0.1)',
                   }}
+                  title="Toutes les requêtes passent par l’adresse IP US du serveur Vercel ou proxy configuré"
                 >
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full ${rfbConnected ? 'bg-neon-green' : 'bg-neon-warn animate-ping'}`}
-                  />
-                  <span>{connectionStatus}</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-neon-green animate-pulse" />
+                  <span className="font-bold">PASSERELLE US : ACTIVE</span>
                 </div>
 
-                {/* Proxy State Badge */}
-                <div
-                  className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-sm border text-[0.65rem] font-mono"
-                  style={{
-                    borderColor: proxyActive ? '#ff9900' : '#00ff66',
-                    color: proxyActive ? '#ff9900' : '#00ff66',
-                    background: proxyActive ? 'rgba(255,153,0,0.1)' : 'rgba(0,255,102,0.1)',
-                  }}
-                  title={proxyActive ? 'Navigation routée via le proxy Decodo' : 'Navigation utilisant l’adresse IP naturelle du serveur'}
-                >
-                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: proxyActive ? '#ff9900' : '#00ff66' }} />
-                  <span>{proxyActive ? 'CONNEXION VIA DECODO' : 'CONNEXION DIRECTE (IP SERVEUR)'}</span>
-                </div>
+                {rfbConnected && (
+                  <button
+                    type="button"
+                    onClick={() => setCloudMode(!cloudMode)}
+                    className="px-2 py-0.5 text-[0.65rem] font-mono rounded border border-neon-cyan text-neon-cyan hover:bg-neon-cyan/20 cursor-pointer"
+                  >
+                    {cloudMode ? '🖥 VOIR FLUX VNC' : '📋 VOIR PORTAIL CLOUD'}
+                  </button>
+                )}
 
                 <button
+                  type="button"
                   onClick={handleClose}
                   className="text-text-muted hover:text-neon-danger text-xs font-mono px-2 py-0.5 transition-colors cursor-pointer"
                 >
-                  ✕ FERMER
+                  ✕
                 </button>
               </div>
             </div>
 
-            {/* Navigation & Action Ribbon */}
-            <div className="bg-black/85 px-4 py-2 border-b border-white/10 flex flex-wrap items-center justify-between gap-2.5 flex-shrink-0">
+            {/* Navigation & Controls Ribbon */}
+            <div className="bg-black/80 px-4 py-2 border-b border-white/10 flex flex-wrap items-center justify-between gap-2.5 flex-shrink-0">
               {/* Site selector tabs */}
               <div className="flex items-center gap-1 bg-black/60 p-1 rounded border border-white/10">
                 <button
@@ -464,151 +395,308 @@ export default function EmbeddedBrowserModal({
                 </button>
               </div>
 
-              {/* Browser navigation controls */}
-              <div className="flex items-center gap-1">
+              {/* Direct Open Link Buttons */}
+              <div className="flex items-center gap-2">
+                <a
+                  href={isTPS ? tpsDirectUrl : fpsDirectUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-cyber px-3 py-1 text-xs font-mono font-bold rounded-sm flex items-center gap-1.5 cursor-pointer"
+                  style={{
+                    borderColor: siteAccent,
+                    color: siteAccent,
+                    background: `${siteAccent}15`,
+                    boxShadow: `0 0 10px ${siteAccent}22`,
+                  }}
+                  title="Ouvrir directement la fiche pré-remplie dans un nouvel onglet"
+                >
+                  <span>🌐 OUVRIR SUR {isTPS ? 'TPS' : 'FPS'} ↗</span>
+                </a>
+
                 <button
                   type="button"
-                  onClick={() => handleBrowserAction('back')}
-                  disabled={navigating}
-                  className="p-1.5 text-xs font-mono bg-white/5 hover:bg-white/10 border border-white/15 rounded text-white transition-colors cursor-pointer"
-                  title="Page précédente"
+                  onClick={() => setShowPasteBox(!showPasteBox)}
+                  className="px-2.5 py-1 text-xs font-mono rounded bg-white/5 hover:bg-white/10 border border-white/20 text-white cursor-pointer"
+                  title="Coller du HTML ou du texte depuis le site"
                 >
-                  ◀
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleBrowserAction('forward')}
-                  disabled={navigating}
-                  className="p-1.5 text-xs font-mono bg-white/5 hover:bg-white/10 border border-white/15 rounded text-white transition-colors cursor-pointer"
-                  title="Page suivante"
-                >
-                  ▶
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleBrowserAction('reload')}
-                  disabled={navigating}
-                  className="px-2 py-1 text-xs font-mono bg-white/5 hover:bg-white/10 border border-white/15 rounded text-white transition-colors cursor-pointer"
-                  title="Actualiser la page"
-                >
-                  ⟳ ACTUALISER
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleBrowserAction(isTPS ? 'home_tps' : 'home_fps')}
-                  disabled={navigating}
-                  className="px-2 py-1 text-xs font-mono bg-white/5 hover:bg-white/10 border border-white/15 rounded text-white transition-colors cursor-pointer"
-                  title="Revenir à l'accueil"
-                >
-                  🏠 ACCUEIL
+                  <span>📋 COLLER HTML</span>
                 </button>
               </div>
+            </div>
 
-              {/* Selected Number & Manual Copy fallback */}
-              {initialPhone && (
-                <div className="flex items-center gap-2 bg-black/90 border border-neon-green/30 px-3 py-1 rounded">
-                  <span className="text-[0.65rem] font-mono text-text-muted">NUMÉRO :</span>
-                  <span className="text-xs font-mono font-bold text-neon-green tracking-wider">
-                    {initialPhone}
-                  </span>
+            {/* Quick Search & Pre-fill Banner */}
+            <div className="bg-black/90 p-3 border-b border-white/10 flex flex-wrap items-center gap-3">
+              <div className="flex-1 flex items-center gap-2 min-w-[260px]">
+                <span className="text-xs font-mono text-text-muted shrink-0">📞 TÉL :</span>
+                <input
+                  type="text"
+                  value={searchPhone}
+                  onChange={(e) => setSearchPhone(e.target.value)}
+                  placeholder="Numéro USA (+1...)"
+                  className="input-cyber py-1.5 px-3 text-xs font-mono flex-1 rounded bg-black/60 border border-white/20 text-neon-green font-bold tracking-wider"
+                />
+                {searchPhone && (
                   <button
                     type="button"
-                    onClick={() => copyNumberToClipboard(initialPhone, targetSite)}
-                    className="px-2 py-0.5 text-[0.65rem] font-mono rounded bg-neon-green/20 hover:bg-neon-green/30 text-neon-green border border-neon-green/40 transition-colors cursor-pointer"
-                    title="Copier le numéro dans le presse-papiers"
+                    onClick={() => copyNumberToClipboard(searchPhone, targetSite)}
+                    className="px-2.5 py-1.5 text-xs font-mono font-bold rounded bg-neon-green/20 hover:bg-neon-green/30 text-neon-green border border-neon-green/50 cursor-pointer shrink-0"
+                    title="Copier le numéro"
                   >
-                    COPIER
+                    📋 COPIER
                   </button>
-                </div>
-              )}
+                )}
+              </div>
 
-              {/* Primary Action: Capture Current Page */}
+              <div className="flex-1 flex items-center gap-2 min-w-[220px]">
+                <span className="text-xs font-mono text-text-muted shrink-0">👤 NOM :</span>
+                <input
+                  type="text"
+                  value={searchName}
+                  onChange={(e) => setSearchName(e.target.value)}
+                  placeholder="Nom du prospect"
+                  className="input-cyber py-1.5 px-3 text-xs font-mono flex-1 rounded bg-black/60 border border-white/20 text-white"
+                />
+              </div>
+
               <button
                 type="button"
-                onClick={handleCapturePage}
-                disabled={capturing}
-                className="btn-cyber px-4 py-1.5 text-xs font-mono font-bold rounded-sm flex items-center gap-2 cursor-pointer shadow-lg"
+                onClick={() => performLookup(searchPhone, searchName, targetSite)}
+                disabled={isSearching}
+                className="btn-cyber px-4 py-1.5 text-xs font-mono font-bold rounded cursor-pointer shrink-0 flex items-center gap-1.5"
                 style={{
-                  borderColor: '#00ff66',
-                  color: '#00ff66',
-                  background: 'rgba(0, 255, 102, 0.15)',
-                  boxShadow: '0 0 15px rgba(0, 255, 102, 0.25)',
+                  borderColor: '#00d4ff',
+                  color: '#00d4ff',
+                  background: 'rgba(0, 212, 255, 0.15)',
                 }}
-                title="Analyser et extraire uniquement la page actuellement visible dans le navigateur"
               >
-                <span>{capturing ? 'ANALYSE DU DOM...' : '📸 CAPTURER CETTE PAGE'}</span>
+                <span>{isSearching ? '⏳ EN COURS...' : '⚡ RECHERCHER VIA PASSERELLE'}</span>
               </button>
             </div>
 
-            {/* Helper instruction / Clipboard Notification banner */}
-            <div className="bg-black/95 px-4 py-1.5 border-b border-white/10 flex items-center justify-between text-[0.7rem] font-mono">
-              <div className="flex items-center gap-2">
-                <span className="text-yellow-400">💡 CONSEIL :</span>
-                <span className="text-text-muted">
-                  Collez le numéro ({initialPhone || 'votre recherche'}) avec{' '}
-                  <kbd className="px-1 py-0.5 rounded bg-white/10 text-white">Ctrl+V</kbd> dans le champ de recherche du site. Si un CAPTCHA s'affiche, résolvez-le directement à l'écran.
-                </span>
+            {/* Feedback notification banner */}
+            {copiedStatus && (
+              <div className="bg-neon-green/10 border-b border-neon-green/30 px-4 py-1 text-xs font-mono text-neon-green font-bold flex items-center gap-2 animate-pulse">
+                <span>✓</span>
+                <span>{copiedStatus}</span>
               </div>
-              {copiedStatus && (
-                <span className="text-neon-green font-bold animate-pulse">
-                  ✓ {copiedStatus}
-                </span>
+            )}
+
+            {/* Optional Paste HTML Area */}
+            {showPasteBox && (
+              <div className="bg-black/90 p-3 border-b border-white/10 flex flex-col gap-2">
+                <div className="text-xs font-mono text-yellow-400 font-bold">
+                  📋 Extraction manuelle : collez ci-dessous le code HTML ou texte de la page {isTPS ? 'TPS' : 'FPS'} :
+                </div>
+                <textarea
+                  value={pasteHtml}
+                  onChange={(e) => setPasteHtml(e.target.value)}
+                  placeholder="Collez ici le code source ou le contenu de la page ouverte dans votre navigateur..."
+                  rows={4}
+                  className="input-cyber p-2 text-xs font-mono bg-black/80 border border-white/20 rounded text-text-muted focus:text-white"
+                />
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowPasteBox(false)}
+                    className="px-3 py-1 text-xs font-mono rounded bg-white/5 hover:bg-white/10 text-text-muted"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleParsePastedHtml}
+                    disabled={capturing || !pasteHtml.trim()}
+                    className="btn-cyber px-4 py-1 text-xs font-mono font-bold rounded"
+                    style={{ borderColor: '#00ff66', color: '#00ff66' }}
+                  >
+                    {capturing ? 'Analyse...' : '📸 Extraire les prospects'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Main Content Area */}
+            <div className="flex-1 overflow-y-auto p-4 relative">
+              {/* Optional noVNC Display if connected */}
+              {!cloudMode && rfbConnected ? (
+                <div className="w-full h-full relative bg-black flex items-center justify-center">
+                  <div
+                    ref={canvasContainerRef}
+                    className="w-full h-full flex items-center justify-center relative overflow-hidden bg-black select-none"
+                  />
+                </div>
+              ) : (
+                /* Cloud Mode: Results & Intelligence Cards */
+                <div className="space-y-4">
+                  {isSearching ? (
+                    <div className="flex flex-col items-center justify-center py-16 gap-3">
+                      <div className="w-10 h-10 border-2 border-neon-cyan border-t-transparent rounded-full animate-spin" />
+                      <div className="text-neon-cyan text-sm font-mono tracking-wider font-bold">
+                        INTERROGATION DE LA PASSERELLE US / PROXY EN COURS...
+                      </div>
+                      <div className="text-text-muted text-xs font-mono">
+                        Routage des requêtes TPS & FPS à travers l'infrastructure américaine
+                      </div>
+                    </div>
+                  ) : searchResults.length > 0 ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs font-mono text-neon-green font-bold">
+                          DOSSIERS DISPONIBLES ({searchResults.length}) :
+                        </div>
+                        <div className="text-[0.7rem] font-mono text-text-muted">
+                          Source : Passerelle US & Dossiers Publics
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {searchResults.map((lead, idx) => {
+                          const fullName = `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Prospect Détecté'
+                          const isAdded = addedQueueId === idx
+                          const isSaved = savedContactId === idx
+
+                          return (
+                            <motion.div
+                              key={idx}
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: idx * 0.05 }}
+                              className="card-cyber p-4 rounded border border-white/15 bg-black/60 flex flex-col justify-between gap-3 hover:border-neon-cyan/50 transition-all"
+                            >
+                              <div className="space-y-2">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div>
+                                    <div className="text-sm font-mono font-bold text-white tracking-wide">
+                                      👤 {fullName}
+                                    </div>
+                                    {lead.age && lead.age !== 'N/A' && (
+                                      <div className="text-[0.7rem] font-mono text-text-muted">
+                                        Âge estimé : <span className="text-yellow-400 font-bold">{lead.age} ans</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                  <span className="px-2 py-0.5 rounded text-[0.65rem] font-mono bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan shrink-0">
+                                    {lead.source || targetSite.toUpperCase()}
+                                  </span>
+                                </div>
+
+                                <div className="text-xs font-mono space-y-1 bg-black/40 p-2.5 rounded border border-white/5">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-text-muted">📞 Tél :</span>
+                                    <span className="text-neon-green font-bold tracking-wider">{lead.phone || lead.lookup_phone}</span>
+                                  </div>
+                                  {lead.carrier && (
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-text-muted">🏢 Opérateur :</span>
+                                      <span className="text-yellow-400 font-bold">{lead.carrier}</span>
+                                    </div>
+                                  )}
+                                  <div className="flex items-start justify-between gap-2 pt-1 border-t border-white/5">
+                                    <span className="text-text-muted shrink-0">🏠 Adresse :</span>
+                                    <span className="text-right text-text-muted truncate max-w-[220px]">{lead.address || 'Non spécifiée'}</span>
+                                  </div>
+                                  {lead.relatives && (
+                                    <div className="flex items-start justify-between gap-2">
+                                      <span className="text-text-muted shrink-0">👥 Proches :</span>
+                                      <span className="text-right text-text-muted truncate max-w-[220px]">
+                                        {Array.isArray(lead.relatives) ? lead.relatives.join(', ') : lead.relatives}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Card Actions */}
+                              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/10">
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddLeadToQueue(lead, idx)}
+                                  className={`btn-cyber py-1.5 text-xs font-mono font-bold rounded flex items-center justify-center gap-1.5 cursor-pointer ${
+                                    isAdded ? 'bg-neon-green/30 border-neon-green text-neon-green' : ''
+                                  }`}
+                                  style={{ borderColor: '#00ff66', color: '#00ff66' }}
+                                >
+                                  <span>{isAdded ? '✓ AJOUTÉ !' : '⚡ METTRE EN FILE'}</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveContact(lead, idx)}
+                                  className={`btn-cyber py-1.5 text-xs font-mono font-bold rounded flex items-center justify-center gap-1.5 cursor-pointer ${
+                                    isSaved ? 'bg-neon-cyan/30 border-neon-cyan text-neon-cyan' : ''
+                                  }`}
+                                  style={{ borderColor: '#00d4ff', color: '#00d4ff' }}
+                                >
+                                  <span>{isSaved ? '✓ SAUVEGARDÉ !' : '💾 ENREGISTRER'}</span>
+                                </button>
+                              </div>
+                            </motion.div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    /* Initial Guidance / Empty State */
+                    <div className="flex flex-col items-center justify-center py-12 text-center max-w-lg mx-auto space-y-4">
+                      <div className="w-14 h-14 rounded-full bg-neon-cyan/10 border border-neon-cyan/30 flex items-center justify-center text-2xl text-neon-cyan">
+                        🌐
+                      </div>
+                      <div className="space-y-1">
+                        <h3 className="text-sm font-mono font-bold text-white">
+                          PORTAIL CLOUD INTELLIGENCE TPS & FPS
+                        </h3>
+                        <p className="text-xs font-mono text-text-muted">
+                          {searchError || 'Entrez un numéro américain ci-dessus pour interroger la base publique via la passerelle US sécurisée.'}
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full pt-2">
+                        <a
+                          href={tpsDirectUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn-cyber py-2.5 px-3 text-xs font-mono font-bold rounded flex items-center justify-center gap-1.5 cursor-pointer"
+                          style={{ borderColor: '#00d4ff', color: '#00d4ff', background: 'rgba(0,212,255,0.1)' }}
+                        >
+                          <span>🔎 TruePeopleSearch ↗</span>
+                        </a>
+
+                        <a
+                          href={fpsDirectUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn-cyber py-2.5 px-3 text-xs font-mono font-bold rounded flex items-center justify-center gap-1.5 cursor-pointer"
+                          style={{ borderColor: '#ff9900', color: '#ff9900', background: 'rgba(255,153,0,0.1)' }}
+                        >
+                          <span>⚡ FastPeopleSearch ↗</span>
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 
-            {/* Chromium Display Window (Direct RFB Canvas Container) */}
-            <div className="flex-1 relative bg-black overflow-hidden flex items-center justify-center">
-              {/* Spinner & Loading State */}
-              {!rfbConnected && !errorMessage && (
-                <div className="absolute inset-0 bg-black/90 z-20 flex flex-col items-center justify-center gap-3">
-                  <div className="w-9 h-9 border-2 border-neon-cyan border-t-transparent rounded-full animate-spin" />
-                  <div className="text-neon-cyan text-xs font-mono tracking-wider">
-                    {connectionStatus.toUpperCase()}
-                  </div>
-                  <div className="text-text-muted text-[0.7rem] font-mono">
-                    Initialisation du flux RFB direct...
-                  </div>
-                </div>
-              )}
-
-              {/* Dedicated RFB Screen Canvas Mount */}
-              <div
-                ref={canvasContainerRef}
-                className="w-full h-full flex items-center justify-center relative overflow-hidden bg-black select-none"
-                style={{ cursor: 'default' }}
-              />
-
-              {/* Error & Disconnect Overlay */}
-              {errorMessage && (
-                <div className="absolute inset-0 bg-black/95 z-30 flex flex-col items-center justify-center p-6 text-center space-y-4">
-                  <div className="text-4xl">⚠️</div>
-                  <div className="text-neon-danger font-mono font-bold text-sm">
-                    {errorMessage}
-                  </div>
-                  <div className="text-text-muted font-mono text-xs max-w-md">
-                    Statut actuel : {connectionStatus}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => initBrowserSession(targetSite, true)}
-                    className="btn-cyber px-5 py-2 text-xs font-mono font-bold rounded-sm border-neon-cyan text-neon-cyan hover:bg-neon-cyan/20 cursor-pointer"
-                  >
-                    ⟳ RÉESSAYER
-                  </button>
-                </div>
-              )}
+            {/* Bottom Footer Info */}
+            <div className="bg-black/95 px-4 py-2 border-t border-white/10 flex items-center justify-between text-[0.65rem] font-mono text-text-muted">
+              <div>
+                Routage : <span className="text-neon-cyan">{proxyProvider}</span> | Localisation : <span className="text-neon-green">Ashburn, VA (USA)</span>
+              </div>
+              <div>
+                HACK509 // MODULE INTELLIGENCE PROSPECT TPS / FPS
+              </div>
             </div>
           </motion.div>
         </div>
       </AnimatePresence>
 
-      {/* Capture Preview Modal for validation and import */}
+      {/* Capture Preview Modal */}
       <CapturePreviewModal
         isOpen={previewOpen}
         onClose={() => setPreviewOpen(false)}
         capturedLeads={capturedLeads}
         source={isTPS ? 'TPS' : 'FPS'}
-        currentUrl={activeUrl}
+        currentUrl={isTPS ? tpsDirectUrl : fpsDirectUrl}
         onImportSuccess={onImportSuccess}
       />
     </>
