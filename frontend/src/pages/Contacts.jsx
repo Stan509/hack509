@@ -340,7 +340,7 @@ function ImportPipeline({ onImport, onSaveAndQueue }) {
                 <thead>
                   <tr className="bg-black/90 border-b border-white/10 text-text-muted text-[0.7rem]">
                     <th className="p-2">#</th>
-                    <th className="p-2">NOM COMPLET</th>
+                    <th className="p-2">NAME</th>
                     <th className="p-2">TÉLÉPHONE</th>
                     <th className="p-2">ADRESSE / VILLE</th>
                     <th className="p-2">ENTREPRISE / INFOS</th>
