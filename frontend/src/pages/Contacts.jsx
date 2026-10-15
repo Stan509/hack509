@@ -98,7 +98,7 @@ function ImportPipeline({ onImport, onSaveAndQueue }) {
 
     // Find known column indices
     let phoneColIdx = headerCols.findIndex(h => /phone|tel|mobile|cell|num|contact|appel/i.test(h))
-    const fnameColIdx = headerCols.findIndex(h => /first_name|firstname|prenom|first|given/i.test(h))
+    const fnameColIdx = headerCols.findIndex(h => /first_name|firstname|prenom|first|given/i.test(h) && !/reported/i.test(h))
     const lnameColIdx = headerCols.findIndex(h => /last_name|lastname|nom|last|family|surname/i.test(h))
     const fullNameColIdx = headerCols.findIndex(h => /^(name|full_name|fullname|nom_complet|contact_name|client|prospect)$/i.test(h))
     const addrColIdx = headerCols.findIndex(h => /address|addr|street|rue|adresse|location/i.test(h))
